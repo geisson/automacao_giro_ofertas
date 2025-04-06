@@ -4,6 +4,7 @@ import glob
 import xmltodict
 import json
 
+
 # import xml.etree.ElementTree as ET
 
 
@@ -40,78 +41,6 @@ def renomear_arquivos(arquivos, diretorio):
 
 #-----------------------------
 
-# # FUNÇÕES UNIR .XML
-# def merge_xml_files(diretorio, output_file):
-#     # Encontrar todos os arquivos XML que correspondem ao padrão
-#     xml_files = glob.glob(diretorio)
-
-#     if not xml_files:
-#         print("Nenhum arquivo XML encontrado com o padrão especificado.")
-#         return
-
-#     # Criar o elemento raiz para o novo XML
-#     merged_root = ET.Element("MergedData")
-
-#     for xml_file in xml_files:
-#         try:
-#             tree = ET.parse(xml_file)
-#             root = tree.getroot()
-
-#             # Adicionar todos os elementos filhos do arquivo atual ao merged_root
-#             for child in root:
-#                 merged_root.append(child)
-
-#         except ET.ParseError as e:
-#             print(f"Erro ao analisar {xml_file}: {e}")
-#             continue
-
-#     # Criar a árvore XML com o merged_root
-#     merged_tree = ET.ElementTree(merged_root)
-
-#     # Escrever o arquivo de saída
-#     merged_tree.write(output_file, encoding='utf-8', xml_declaration=True)
-#     print(f"Arquivos XML unidos com sucesso em {output_file}")
-
-#-----------------------------
-
-diretorio_arquivos_brutos = './dados_brutos/'
-extensao = '.xml'
-
-arquivos = glob.glob(os.path.join(diretorio_arquivos_brutos, '*{}'.format(extensao)))
-# renomear_arquivos(arquivos, diretorio_arquivos_brutos)
-
-# lista_de_arquivos = os.listdir(diretorio)
-# arquivo_xml_unido = 'giro_da_praca_ofertas.xml'
-# diretorio_salvamento = './dados_corrigidos/'
-
-# merge_xml_files(f'{diretorio}*.xml', arquivo_xml_unido)
-
-#-----------------------------
-
-# def pegar_infos(nome_arquivo):
-#     with open(f'./dados_brutos/{nome_arquivo}', 'rb') as arquivo_xml:
-#         dic_arquivo = xmltodict.parse(arquivo_xml)
-
-#         try:
-#             infos_oferta = dic_arquivo['temporario_846']['temporario_846_row']
-#             oferta_nome = infos_oferta['descrpromocao']
-#             oferta_inicio = infos_oferta['dtinipromocao']
-#             oferta_fim = infos_oferta['dtfimpromocao']
-#             oferta_id_produto = infos_oferta['idsubproduto']
-#             oferta_produto = infos_oferta['descrresproduto']
-#             oferta_preco = infos_oferta['precopromocao']
-
-#             print(oferta_nome, oferta_inicio, oferta_fim, oferta_id_produto, oferta_produto, oferta_preco, sep='\n')
-#         except Exception as e:
-#             print(e)
-#             print(json.dumps(dic_arquivo, indent=4))
-
-#         # # Só imprima se as variáveis foram definidas
-#         # if all([oferta_nome, oferta_inicio, oferta_fim, oferta_id_produto, oferta_produto, oferta_preco]):
-#         #     print(oferta_nome, oferta_inicio, oferta_fim, oferta_id_produto, oferta_produto, oferta_preco, sep='\n')
-#         # else:
-#         #     print(f"Não foi possível obter todas as informações do arquivo {nome_arquivo}")
-
 def xml_para_lista_dicionarios(nome_arquivo):
     """Converte um XML em uma lista de dicionários (um para cada produto)."""
     with open(f'./dados_brutos/{nome_arquivo}', 'rb') as arquivo_xml:
@@ -137,26 +66,95 @@ def xml_para_lista_dicionarios(nome_arquivo):
 
         return lista_produtos
 
-# Lista todos os arquivos XML na pasta
-lista_arquivos = [arq for arq in os.listdir('./dados_brutos/') if arq.endswith('.xml')]
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# AQUI É ONDE TUDO É FEITO!
+# NADA AQUI DEVE SER DELETADO
 
-# Lista consolidada de todos os produtos de todos os arquivos
-todos_produtos = []
+# diretorio_arquivos_brutos = './dados_brutos/'
+# extensao = '.xml'
 
-# Processa cada arquivo
-for arquivo in lista_arquivos:
-    try:
-        produtos = xml_para_lista_dicionarios(arquivo)
-        todos_produtos.extend(produtos)  # Adiciona à lista consolidada
-        print(f"✅ {arquivo}: {len(produtos)} produtos processados.")
-    except Exception as e:
-        print(f"❌ Erro em {arquivo}: {e}")
+# arquivos = glob.glob(os.path.join(diretorio_arquivos_brutos, '*{}'.format(extensao)))
+# renomear_arquivos(arquivos, diretorio_arquivos_brutos)
 
-# Cria um DataFrame (tabela) com pandas e exporta para Excel
-if todos_produtos:
-    df = pd.DataFrame(todos_produtos)
-    df.to_excel("ofertas_consolidadas.xlsx", index=False)
-    print(f"🎉 Excel gerado com {len(df)} produtos!")
-else:
-    print("Nenhum dado foi processado.")
 
+
+# # Lista todos os arquivos XML na pasta
+# lista_arquivos = [arq for arq in os.listdir('./dados_brutos/') if arq.endswith('.xml')]
+
+# # Lista consolidada de todos os produtos de todos os arquivos
+# todos_produtos = []
+
+# # Processa cada arquivo
+# for arquivo in lista_arquivos:
+#     try:
+#         produtos = xml_para_lista_dicionarios(arquivo)
+#         todos_produtos.extend(produtos)  # Adiciona à lista consolidada
+#         print(f"✅ {arquivo}: {len(produtos)} produtos processados.")
+#     except Exception as e:
+#         print(f"❌ Erro em {arquivo}: {e}")
+
+# # Cria um DataFrame (tabela) com pandas e exporta para Excel
+# if todos_produtos:
+#     df = pd.DataFrame(todos_produtos)
+#     df.to_excel("ofertas_consolidadas.xlsx", index=False)
+#     print(f"🎉 Excel gerado com {len(df)} produtos!")
+# else:
+#     print("Nenhum dado foi processado.")
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+# # MESCLAR PLANILHAS
+
+# tabela_nomes_produtos_corrigidos = pd.read_excel('./banco_dados/nomes_produtos_corrigidos.xlsx')
+# tabela_ofertas_consolidadas = pd.read_excel('ofertas_consolidadas.xlsx')
+
+
+
+# # 1. Carregar as tabelas
+# df_corrigidos = pd.read_excel('dados_produtos_corrigidos.xlsx')
+# df_ofertas = pd.read_excel('ofertas_consolidadas.xlsx')
+
+# # 2. Filtrar apenas IDs que não existem na tabela corrigidos
+# ids_existentes = df_corrigidos['ID Produto'].unique()  # Pega todos os IDs únicos da tabela original
+# novos_produtos = df_ofertas[~df_ofertas['ID Produto'].isin(ids_existentes)]  # Filtra apenas os que não existem
+
+# # 3. Selecionar apenas as colunas desejadas para adicionar (opcional, se quiser todas, pode pular)
+# colunas_desejadas = ['ID Produto', 'Produto', 'Preço Promoção']
+# novos_produtos_filtrados = novos_produtos[colunas_desejadas]
+
+# # 4. Concatenar (adicionar) os novos registros na tabela original
+# df_final = pd.concat([df_corrigidos, novos_produtos_filtrados], ignore_index=True)
+
+# # 5. Salvar de volta no arquivo original (ou em outro, se preferir)
+# df_final.to_excel('dados_produtos_corrigidos.xlsx', index=False)
+
+# print("Registros adicionados com sucesso!")
+
+
+#------------------------
+
+
+# Carregar os dados
+df_corrigidos = pd.read_excel('dados_produtos_corrigidos.xlsx')
+df_ofertas = pd.read_excel('ofertas_consolidadas.xlsx')
+
+# Realizar o merge (junção) das tabelas
+df_final = df_ofertas.merge(
+    df_corrigidos[['ID Produto', 'Seção', 'Produto Corrigido', 'Preço Promoção']],
+    on='ID Produto',
+    how='left'
+)
+
+# Selecionar e renomear as colunas conforme especificado
+df_final = df_final[['Promoção', 'Seção', 'ID Produto', 'Produto Corrigido', 'Preço Promoção_y']]
+df_final = df_final.rename(columns={'Preço Promoção_y': 'Preço Promoção'})
+
+# Salvar o resultado
+df_final.to_excel('ofertas_corrigidas.xlsx', index=False)
+
+print("Tabela 'ofertas_corrigidas.xls' criada com sucesso!")
