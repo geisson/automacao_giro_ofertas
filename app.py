@@ -224,24 +224,35 @@ def adicionar_novos_produtos() -> None:
 def gerar_ofertas_corrigidas() -> None:
     """
     Gera um arquivo com as ofertas corrigidas, combinando dados das duas fontes.
+    Mantém o preço promocional original do arquivo consolidado e renomeia as colunas conforme especificado.
     """
+    # Carrega os dados
     df_corrigidos = pd.read_excel(CORRECTED_FILE)
     df_ofertas = pd.read_excel(CONSOLIDATED_FILE)
 
-    # Realiza o merge das tabelas
-    df_final = df_ofertas.merge(
-        df_corrigidos[['ID Produto', 'Seção', 'Produto Corrigido', 'Preço Promoção']],
+    # Realiza o merge das tabelas mantendo o preço do arquivo consolidado
+    df_final = df_ofertas[['ID Produto', 'Promoção', 'Preço Promoção']].merge(
+        df_corrigidos[['ID Produto', 'Seção', 'Produto Corrigido']],
         on='ID Produto',
         how='left'
     )
 
-    # Seleciona e renomeia colunas
-    df_final = df_final[['Promoção', 'Seção', 'ID Produto', 'Produto Corrigido', 'Preço Promoção_y']]
-    df_final = df_final.rename(columns={'Preço Promoção_y': 'Preço Promoção'})
+    # Seleciona e renomeia as colunas conforme especificado
+    df_final = df_final[[
+        'Promoção',
+        'Seção',
+        'ID Produto',
+        'Produto Corrigido',
+        'Preço Promoção'
+    ]].rename(columns={
+        'ID Produto': 'ID',
+        'Produto Corrigido': 'PRODUTO',
+        'Preço Promoção': 'PROMOÇÃO'
+    })
 
     # Salva o resultado
     df_final.to_excel(CORRECTED_OFFERS_FILE, index=False)
-    print(f"Tabela '{CORRECTED_OFFERS_FILE}' criada com sucesso!")
+    print(f"✅ Tabela '{CORRECTED_OFFERS_FILE}' criada com sucesso!")
 
 # ------------------------------------------
 # FUNÇÃO PRINCIPAL
