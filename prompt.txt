@@ -1,0 +1,136 @@
+quero quer a formatação do arquivo `ofertas_corrigidas.xlsx` seja da seguinte forma:
+
+primeiro: a goluna `PRODUTO` deve ser organizada em ordem alfabética.
+segundo: depois de organizar a coluna `PRODUTO`, a coluna `Seção` deve ser organizada em ordem alfabética.
+
+depois, entre cada sessão diferente, deve ser adicionado uma linha em branco.
+para definir a sessão, utilize o nome que esta na cessão até o caractere `-`, exemplo:
+
+#05 BEBIDA - CERVEJA
+#05 BEBIDA - CERVEJA CX
+#05 BEBIDA - DESTILADOS
+
+devem ser consideradas uma unica sessão.
+
+a unica  exceção é a sessão `#01 MERCEARIA - #01 ALTO GIRO`, que deve ser considerada como uma sessão sessão.
+ou seja, deve ficar assim:
+
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+<linha em branco>
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+
+
+exemplo:
+Seção
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+<linha em branco>
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+<linha em branco>
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#04 HIGIENE PESSOAL
+<linha em branco>
+#05 BEBIDA - CERVEJA
+#05 BEBIDA - CERVEJA CX
+#05 BEBIDA - DESTILADOS
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - EMBUTIDO
+#06 AÇOUGUE - SUINO
+#06 AÇOUGUE - SUINO
+<linha em branco>
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+<linha em branco>
+
+
+quando os produtos possuem o mesmo nome, até a medida/peso, e o mesmo preço, devem ser agrupados em uma unica linha, retirando a parte a partir da medida/peso, exemplo:
+
+PRODUTO	                                    |PROMOÇÃO
+AMACIANTE DE ROUPAS +FAMILIA 2L FLORISTA    |7,39
+AMACIANTE DE ROUPAS +FAMILIA 2L ROSAS	      |7,39
+DESINFETANTE START VOREL 2L CITRUS	        |11,99
+DESINFETANTE START VOREL 2L EUCALIPTO	      |11,99
+DESINFETANTE START VOREL 2L FLORAL	        |11,99
+DESINFETANTE START VOREL 2L JASMIM	        |11,99
+DESINFETANTE START VOREL 2L LAVANDA	        |11,99
+DESINFETANTE START VOREL 2L PINHO	          |11,99
+DETERGENTE LIQUIDO LIMPOL 500ML COCO	      |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML CRISTAL	    |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML JABOTICABA  |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML LAVANDA	    |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML LIMÃO	      |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML MAÇÃ	      |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML NEUTRO	    |2,59
+
+pode ser consolidado como:
+
+PRODUTO	                          |PROMOÇÃO
+AMACIANTE DE ROUPAS +FAMILIA 2L   |	7,39
+DESINFETANTE START VOREL 2L       |	11,99
+DETERGENTE LIQUIDO LIMPOL 500ML   | 2,59
+
+
+As sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO`, devem ser consideradas como uma unica sessão
+me expressei mal, quero que as sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO` fiquem agrupadas. o nome diferente é importante para definir os produtos que estão dentro da sessão. `#01 MERCEARIA - #01 ALTO GIRO` deve vir primeiro que  `#01 MERCEARIA - #02 ALTO GIRO`
