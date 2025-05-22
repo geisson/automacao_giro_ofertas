@@ -15,6 +15,9 @@ devem ser consideradas uma unica sessão.
 a unica  exceção é a sessão `#01 MERCEARIA - #01 ALTO GIRO`, que deve ser considerada como uma sessão sessão.
 ou seja, deve ficar assim:
 
+As sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO`, devem ser consideradas como uma unica sessão
+me expressei mal, quero que as sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO` fiquem agrupadas. o nome diferente é importante para definir os produtos que estão dentro da sessão. `#01 MERCEARIA - #01 ALTO GIRO` deve vir primeiro que  `#01 MERCEARIA - #02 ALTO GIRO`
+
 #01 MERCEARIA - #01 ALTO GIRO
 #01 MERCEARIA - #01 ALTO GIRO
 #01 MERCEARIA - #01 ALTO GIRO
@@ -105,7 +108,7 @@ Seção
 <linha em branco>
 
 
-quando os produtos possuem o mesmo nome, até a medida/peso, e o mesmo preço, devem ser agrupados em uma unica linha, retirando a parte a partir da medida/peso, exemplo:
+quando os produtos possuem o mesmo nome, até a medida/peso (coluna 'PRODUTO'), e o mesmo preço (coluna 'PROMOÇÃO'), devem ser agrupados em uma unica linha, retirando a parte a partir da medida/peso, importante, isso deve ser feito APENAS em produtos que seguem a regra de nomes iguais até a medida e o mesmo preço , exemplo:
 
 PRODUTO	                                    |PROMOÇÃO
 AMACIANTE DE ROUPAS +FAMILIA 2L FLORISTA    |7,39
@@ -131,6 +134,37 @@ AMACIANTE DE ROUPAS +FAMILIA 2L   |	7,39
 DESINFETANTE START VOREL 2L       |	11,99
 DETERGENTE LIQUIDO LIMPOL 500ML   | 2,59
 
+produtos como por exemplo:
+
+PRODUTO	                                        |PROMOÇÃO
+ARROZ BRILHANTE PCT 5KG TIPO 1 BRANCO 	        |R$ 23,99
+ARROZ DONA VAVA PCT 5KG TIPO 1 BRANCO 	        |R$ 23,99
+ARROZ REALENGO PCT 5KG TIPO 1 BRANCO 	          |R$ 25,99
+ARROZ SEU ARROZ PCT 5KG TIPO 1 BRANCO	          |R$ 19,99
+FEIJÃO GOL 1KG CORES 	                          |R$ 4,99
+FEIJÃO TIO JORGE 1KG CARIOCA	                  |R$ 6,69
+AÇUCAR ECOÇUCAR CRISTAL 2KG	                    |R$ 8,59
+OLEO DE SOJA SOYA 900ML	                        |R$ 8,59
+AZEITE DE OLIVA COCINERO 500ML EXTRA VIRGEM 	  |R$ 52,99
+BISCOITO MARILAN 350G CRACKER ESPECIAL 	        |R$ 6,49
+BISCOITO MICOS 600G ROSQUINHA COCO	            |R$ 7,49
+CAFÉ UNIÃO 250G TRADICIONAL	                    |R$ 16,99
+CREME DE LEITE PIRACANJUBA 200G UHT	            |R$ 4,69
+CUSCUZ DE MILHO SINHA 500G	                    |R$ 2,69
+EXTRATO DE TOMATE OLE COPO 190G	                |R$ 3,19
+FARINHA DE MANDIOCA OVINHA DONA DE 1KG	        |R$ 8,69
+FARINHA DE MILHO SINHA 500G BIJU	              |R$ 3,99
+
+continuam da mesma forma, já que são produtos diferentes entre si.
+
+----
+
+voce tambem deve formatar os dados da coluna promoção como contabil, e deve bordas simples nos produtos agrupados, de forma que fique mais facil de entender a tabela
+
+
 
 As sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO`, devem ser consideradas como uma unica sessão
 me expressei mal, quero que as sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO` fiquem agrupadas. o nome diferente é importante para definir os produtos que estão dentro da sessão. `#01 MERCEARIA - #01 ALTO GIRO` deve vir primeiro que  `#01 MERCEARIA - #02 ALTO GIRO`
+
+
+a consoli
