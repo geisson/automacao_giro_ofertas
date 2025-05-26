@@ -48,7 +48,7 @@ Este script Python automatiza o processamento de arquivos XML contendo ofertas d
 
 O script espera a seguinte estrutura na pasta raiz onde ele é executado:
 
-```
+```md
 
 seu_projeto/
 ├── app.py (ou o nome do seu script principal)
