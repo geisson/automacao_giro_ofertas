@@ -36,7 +36,7 @@ Seção
 #01 MERCEARIA - #01 ALTO GIRO
 #01 MERCEARIA - #01 ALTO GIRO
 #01 MERCEARIA - #01 ALTO GIRO
-<linha em branco>
+<linha em branco sem bordas>
 #02 MERCEARIA
 #02 MERCEARIA
 #02 MERCEARIA
@@ -49,7 +49,7 @@ Seção
 #02 MERCEARIA
 #02 MERCEARIA
 #02 MERCEARIA
-<linha em branco>
+<linha em branco sem bordas>
 #03 LIMPEZA
 #03 LIMPEZA
 #03 LIMPEZA
@@ -70,7 +70,7 @@ Seção
 #03 LIMPEZA
 #03 LIMPEZA
 #04 HIGIENE PESSOAL
-<linha em branco>
+<linha em branco sem bordas>
 #05 BEBIDA - CERVEJA
 #05 BEBIDA - CERVEJA CX
 #05 BEBIDA - DESTILADOS
@@ -84,7 +84,7 @@ Seção
 #06 AÇOUGUE - EMBUTIDO
 #06 AÇOUGUE - SUINO
 #06 AÇOUGUE - SUINO
-<linha em branco>
+<linha em branco sem bordas>
 #09 HORTIFRUTI
 #09 HORTIFRUTI
 #09 HORTIFRUTI
@@ -105,10 +105,10 @@ Seção
 #09 HORTIFRUTI
 #09 HORTIFRUTI
 #09 HORTIFRUTI
-<linha em branco>
+<linha em branco sem bordas>
 
 
-quando os produtos possuem o mesmo nome, até a medida/peso (coluna 'PRODUTO'), e o mesmo preço (coluna 'PROMOÇÃO'), devem ser agrupados em uma unica linha, retirando a parte a partir da medida/peso, importante, isso deve ser feito APENAS em produtos que seguem a regra de nomes iguais até a medida e o mesmo preço , exemplo:
+quando os produtos possuem o mesmo nome, até a medida/peso (coluna 'PRODUTO'), e o mesmo preço (coluna 'PROMOÇÃO'), devem ser agrupados em uma unica linha, retirando a parte a partir da medida/peso, importante, isso deve ser feito APENAS em produtos que seguem a regra de nomes iguais até a medida e o mesmo preço, importante, esse funionalidade não deve valer para produtos das sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO` , exemplo:
 
 PRODUTO	                                    |PROMOÇÃO
 AMACIANTE DE ROUPAS +FAMILIA 2L FLORISTA    |7,39
@@ -168,3 +168,163 @@ me expressei mal, quero que as sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 M
 
 
 a consoli
+
+
+
+quero mudar nomes e simplificar o sistema, atualmente a tabela `ofertas_consolidadas.xlsx` é utilizada apenas para consolidar as ofertas pegas dos xmls. quero que a funionalidade funcione sem o arquivo `ofertas_consolidadas.xlsx`
+
+quero mudar os nomes das tabelas e pastas tambem, eles não estão intuitivos.
+Tambem quero mudar o nome da colunas da tabela atualmente com o nome `dados_produtos_corrigidos.xlsx`
+
+ID Produto -> ID
+Seção -> SESSÃO
+Produto	Produto -> NOME SISTEMA
+Corrigido -> NOME CORRIGIDO
+Preço -> EXCLUIR DA TABELA
+Promoção -> EXCLUIR DA TABELA
+
+
+quando os produtos possuem o mesmo nome, até a medida/peso (coluna 'PRODUTO'), e o mesmo preço (coluna 'PROMOÇÃO'), devem ser agrupados em uma unica linha, retirando a parte a partir da medida/peso, importante, isso deve ser feito APENAS em produtos que seguem a regra de nomes iguais até a medida e o mesmo preço, importante, esse funionalidade não deve valer para produtos das sessões `#01 MERCEARIA - #01 ALTO GIRO` e `#01 MERCEARIA - #02 ALTO GIRO` , exemplo:
+
+PRODUTO	                                    |PROMOÇÃO
+AMACIANTE DE ROUPAS +FAMILIA 2L FLORISTA    |7,39
+AMACIANTE DE ROUPAS +FAMILIA 2L ROSAS	      |7,39
+DESINFETANTE START VOREL 2L CITRUS	        |11,99
+DESINFETANTE START VOREL 2L EUCALIPTO	      |11,99
+DESINFETANTE START VOREL 2L FLORAL	        |11,99
+DESINFETANTE START VOREL 2L JASMIM	        |11,99
+DESINFETANTE START VOREL 2L LAVANDA	        |11,99
+DESINFETANTE START VOREL 2L PINHO	          |11,99
+DETERGENTE LIQUIDO LIMPOL 500ML COCO	      |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML CRISTAL	    |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML JABOTICABA  |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML LAVANDA	    |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML LIMÃO	      |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML MAÇÃ	      |2,59
+DETERGENTE LIQUIDO LIMPOL 500ML NEUTRO	    |2,59
+
+pode ser consolidado como:
+
+PRODUTO	                          |PROMOÇÃO
+AMACIANTE DE ROUPAS +FAMILIA 2L   |	7,39
+DESINFETANTE START VOREL 2L       |	11,99
+DETERGENTE LIQUIDO LIMPOL 500ML   | 2,59
+
+produtos como por exemplo:
+
+PRODUTO	                                        |PROMOÇÃO
+ARROZ BRILHANTE PCT 5KG TIPO 1 BRANCO 	        |R$ 23,99
+ARROZ DONA VAVA PCT 5KG TIPO 1 BRANCO 	        |R$ 23,99
+ARROZ REALENGO PCT 5KG TIPO 1 BRANCO 	          |R$ 25,99
+ARROZ SEU ARROZ PCT 5KG TIPO 1 BRANCO	          |R$ 19,99
+FEIJÃO GOL 1KG CORES 	                          |R$ 4,99
+FEIJÃO TIO JORGE 1KG CARIOCA	                  |R$ 6,69
+AÇUCAR ECOÇUCAR CRISTAL 2KG	                    |R$ 8,59
+OLEO DE SOJA SOYA 900ML	                        |R$ 8,59
+AZEITE DE OLIVA COCINERO 500ML EXTRA VIRGEM 	  |R$ 52,99
+BISCOITO MARILAN 350G CRACKER ESPECIAL 	        |R$ 6,49
+BISCOITO MICOS 600G ROSQUINHA COCO	            |R$ 7,49
+CAFÉ UNIÃO 250G TRADICIONAL	                    |R$ 16,99
+CREME DE LEITE PIRACANJUBA 200G UHT	            |R$ 4,69
+CUSCUZ DE MILHO SINHA 500G	                    |R$ 2,69
+EXTRATO DE TOMATE OLE COPO 190G	                |R$ 3,19
+FARINHA DE MANDIOCA OVINHA DONA DE 1KG	        |R$ 8,69
+FARINHA DE MILHO SINHA 500G BIJU	              |R$ 3,99
+
+continuam da mesma forma, já que são produtos diferentes entre si.
+
+
+
+não gere nenhuma pasta.
+utilize a tabela `cadastro_produtos_base.xlsx` que já existe na pasta raiz.
+vou mudar o nome de `cadastro_produtos_base.xlsx` para `produtos_cadastrados.xlsx`
+essa é a ordem correta das colunas no arquivo:
+ID	| SESSÃO  |	NOME_SISTEMA  |	NOME_CORRIGIDO
+
+o arquivo criado `relatorio_ofertas_finais.xlsx` deve ser criado na pasta raiz do projeto.
+mude o nome de `relatorio_ofertas_finais.xlsx`, para `giro_da_praça_ofertas.xlsx`
+a ordem e o nome das colunas deve ser:
+NOME_PROMOÇÃO  |	SESSÃO  |	ID  |	PRODUTO |	PROMOÇÃO
+A coluna `PROMOÇÃO` deve ser formatada como 'Contábil', não como 'Moeda'
+
+as linhas vazias da tabela `giro_da_praça_ofertas.xlsx` não devem ter bordas.
+
+entre cada sessão diferente, deve ser adicionado uma linha em branco, sem bordas, exemplo:
+
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+#01 MERCEARIA - #01 ALTO GIRO
+<linha em branco sem bordas>
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+#02 MERCEARIA
+<linha em branco sem bordas>
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#03 LIMPEZA
+#04 HIGIENE PESSOAL
+<linha em branco sem bordas>
+#05 BEBIDA - CERVEJA
+#05 BEBIDA - CERVEJA CX
+#05 BEBIDA - DESTILADOS
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - BOVINO
+#06 AÇOUGUE - EMBUTIDO
+#06 AÇOUGUE - SUINO
+#06 AÇOUGUE - SUINO
+<linha em branco sem bordas>
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+#09 HORTIFRUTI
+<linha em branco sem bordas>
