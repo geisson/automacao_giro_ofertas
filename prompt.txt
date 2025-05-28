@@ -328,3 +328,60 @@ entre cada sessão diferente, deve ser adicionado uma linha em branco, sem borda
 #09 HORTIFRUTI
 #09 HORTIFRUTI
 <linha em branco sem bordas>
+
+
+
+---
+
+Aqui está o texto revisado, garantindo maior clareza e organização:
+
+---
+
+### **Classificação Detalhada de Produtos no Supermercado**
+
+Atue como um **especialista em organização de supermercados** e analise a tabela de produtos, garantindo uma categorização precisa e estruturada.
+
+Os itens da coluna `NOME_CORRIGIDO` estão atualmente classificados de forma **simplificada** na coluna `SESSÃO`. Para aprimorar a organização do supermercado, crie uma nova coluna chamada `SESSÃO_CORRETA`, onde cada produto será corretamente categorizado conforme sua natureza e uso.
+
+#### **Critérios para a nova classificação:**
+- A **coluna `SESSÃO` servirá como referência principal**, garantindo que os produtos mantenham sua categoria original.
+- A nova classificação **deve incluir subsessões**, especificando melhor a localização dos produtos dentro do supermercado.
+- A **numeração existente na coluna `SESSÃO` (exemplo: `#02`) deve ser mantida e utilizada** na `SESSÃO_CORRETA`, garantindo um padrão de organização consistente.
+- Se houver dúvidas sobre a categorização de um item, consulte **fontes externas** para assegurar precisão na classificação.
+
+#### **Exemplo de Classificação:**
+O produto `LEITE EM PÓ CCGL 1KG INTEGRAL`, atualmente classificado como `#02 MERCEARIA` na coluna `SESSÃO`, deve ser refinado para **`#02 MERCEARIA - LATICÍNIOS`** na nova coluna `SESSÃO_CORRETA`, pois pertence à categoria `MERCEARIA`, mas mais especificamente à subsessão `LATICÍNIOS`.
+
+Esse processo deve ser aplicado a **todos os produtos da tabela**, garantindo uma estrutura lógica e bem definida. A nova organização contribuirá para uma melhor disposição dos produtos no supermercado, facilitando a experiência dos clientes e otimizando a gestão logística.
+
+#### **Formato de Entrega:**
+Os arquivos `.csv` devem ser corretamente formatados e entregues em **lotes de 100 produtos por arquivo**. Após a conclusão de um lote, passe para os próximos 100 produtos até que todos tenham sido categorizados e incluídos na nova estrutura.
+
+
+-------------------------------
+
+meu feedback:
+
+utilizo essa tabela para criar os encartes dos produtos, as numerações me mostram a ordem que os produtos devem ficar, como por exemplo, os produtos `#01 MERCEARIA - #01 ALTO GIRO` devem ficar em destaque. No caso das bebidas,a divisão entre:
+#05 BEBIDA - #00 ENERGETICO
+#05 BEBIDA - #00 REFRIGERANTES
+#05 BEBIDA - #00 SUCO
+#05 BEBIDA - #00 XAROPE
+#05 BEBIDA - CERVEJA
+#05 BEBIDA - CERVEJA CX
+#05 BEBIDA - DESTILADOS
+#05 BEBIDA - FERMENTADOS
+
+Agrupa os produdos em sessoes logicas.
+
+uma classificação mais geral em difersas sessões é melhor do que um muito detalhada, pois ajuda na confecção das promoções, que não usam todos os produtos da tabela de uma vez. a tabela serve como banco de dados.
+
+Gostaria que a classificação dos produtos tambem refletisse a localização dos produtos no supermercado, para ajudar o cartazista a colocar os cartazes corretamente.
+
+#01 MERCEARIA - CEREAIS E GRÃOS
+#01 MERCEARIA - FEIJÕES E LEGUMINOSAS
+#01 MERCEARIA - AÇÚCAR
+#01 MERCEARIA - ÓLEOS
+#02 MERCEARIA - FARINHAS E DERIVADOS
+
+
