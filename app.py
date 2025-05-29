@@ -5,6 +5,7 @@ Dividido em seções bem definidas com funções puras sempre que possível.
 Modificado para incluir agrupamento condicional de produtos, formatação de Excel
 avançada (contábil, bordas) e ordenação específica de seções com linhas em branco.
 V6: Corrigida a lógica de identificação de linhas de espaçamento para não aplicar bordas.
+V7: Adicionada funcionalidade para limpar cores e destacar produtos de oferta em verde no 'produtos_cadastrados.xlsx'.
 """
 
 # ------------------------------------------
@@ -17,7 +18,8 @@ import xmltodict # Certifique-se de que está instalado: pip install xmltodict
 from typing import List, Dict, Any, Optional
 import re
 import numpy as np
-from openpyxl.styles import Border, Side, Alignment, Font # Para formatação Excel
+from openpyxl import load_workbook # Adicionado para carregar um workbook existente
+from openpyxl.styles import Border, Side, Alignment, Font, PatternFill # PatternFill é para cores de célula
 from openpyxl.utils import get_column_letter # Para ajuste de largura de coluna
 import traceback # Para melhor depuração de erros
 
@@ -172,9 +174,9 @@ def atualizar_cadastro_produtos_base(df_ofertas_xml: pd.DataFrame) -> None:
 
     try:
         df_cadastro_base = pd.read_excel(path_cadastro_base)
-        if not 'ID' in df_cadastro_base.columns:
-             print(f"⚠️  Arquivo '{PRODUCT_MASTER_FILE_NAME}' não possui coluna 'ID'. Tratando como novo.")
-             df_cadastro_base = pd.DataFrame(columns=cols_cadastro_base_ordenadas)
+        if 'ID' not in df_cadastro_base.columns:
+            print(f"⚠️  Arquivo '{PRODUCT_MASTER_FILE_NAME}' não possui coluna 'ID'. Tratando como novo.")
+            df_cadastro_base = pd.DataFrame(columns=cols_cadastro_base_ordenadas)
         temp_df = pd.DataFrame(columns=cols_cadastro_base_ordenadas)
         for col in cols_cadastro_base_ordenadas:
             if col in df_cadastro_base.columns:
@@ -189,48 +191,147 @@ def atualizar_cadastro_produtos_base(df_ofertas_xml: pd.DataFrame) -> None:
         print(f"❌ Erro ao carregar '{PRODUCT_MASTER_FILE_NAME}': {e}. Operação cancelada.")
         return
 
+    novos_produtos_df = pd.DataFrame() # Inicializa para o caso de df_ofertas_xml estar vazio
+
     if df_ofertas_xml.empty:
         print(f"ℹ️ DataFrame de ofertas XML está vazio. Nenhum produto novo para adicionar ao '{PRODUCT_MASTER_FILE_NAME}'.")
-        try:
-            df_cadastro_base = df_cadastro_base.reindex(columns=cols_cadastro_base_ordenadas)
-            df_cadastro_base.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID']).to_excel(path_cadastro_base, index=False)
-            print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' salvo (sem novos produtos adicionados).")
-        except Exception as e:
-            print(f"❌ Erro ao salvar '{PRODUCT_MASTER_FILE_NAME}': {e}")
-        return
-
-    if 'ID_Produto_XML' not in df_ofertas_xml.columns or 'Nome_Produto_XML' not in df_ofertas_xml.columns:
-        print(f"❌ Colunas 'ID_Produto_XML' ou 'Nome_Produto_XML' ausentes no DataFrame de ofertas. Não é possível atualizar o cadastro.")
-        return
-
-    ids_existentes_cadastro = set(df_cadastro_base['ID'].dropna().astype(int).unique()) if not df_cadastro_base.empty else set()
-    novos_produtos_df = df_ofertas_xml[~df_ofertas_xml['ID_Produto_XML'].astype(int).isin(ids_existentes_cadastro)].copy()
-
-    if novos_produtos_df.empty:
-        print(f"ℹ️ Nenhum produto novo das ofertas XML para adicionar ao '{PRODUCT_MASTER_FILE_NAME}'.")
     else:
-        print(f"ℹ️ {len(novos_produtos_df)} novos produtos encontrados para adicionar.")
-        novos_para_cadastro_list = []
-        for _, row in novos_produtos_df.iterrows():
-            novos_para_cadastro_list.append({
-                'ID': row['ID_Produto_XML'],
-                'NOME_SISTEMA': row['Nome_Produto_XML'],
-                'SESSÃO': 'SEÇÃO NÃO ESPECIFICADA',
-                'NOME_CORRIGIDO': row['Nome_Produto_XML']
-            })
-        df_novos_formatados = pd.DataFrame(novos_para_cadastro_list, columns=cols_cadastro_base_ordenadas)
-        df_cadastro_base = pd.concat([df_cadastro_base, df_novos_formatados], ignore_index=True)
-        df_cadastro_base.drop_duplicates(subset=['ID'], keep='first', inplace=True)
+        if 'ID_Produto_XML' not in df_ofertas_xml.columns or 'Nome_Produto_XML' not in df_ofertas_xml.columns:
+            print(f"❌ Colunas 'ID_Produto_XML' ou 'Nome_Produto_XML' ausentes no DataFrame de ofertas. Não é possível atualizar o cadastro.")
+            # Mesmo sem novos produtos, precisamos salvar o arquivo base, possivelmente com cores
+        else:
+            # Garante que a coluna 'ID' em df_cadastro_base seja do tipo que pode ser comparado com int
+            if 'ID' in df_cadastro_base.columns:
+                df_cadastro_base['ID'] = pd.to_numeric(df_cadastro_base['ID'], errors='coerce')
+                ids_existentes_cadastro = set(df_cadastro_base['ID'].dropna().astype(int).unique())
+            else:
+                ids_existentes_cadastro = set()
+
+            df_ofertas_xml['ID_Produto_XML'] = pd.to_numeric(df_ofertas_xml['ID_Produto_XML'], errors='coerce')
+            novos_produtos_df = df_ofertas_xml[
+                ~df_ofertas_xml['ID_Produto_XML'].dropna().astype(int).isin(ids_existentes_cadastro)
+            ].copy()
+
+
+            if novos_produtos_df.empty:
+                print(f"ℹ️ Nenhum produto novo das ofertas XML para adicionar ao '{PRODUCT_MASTER_FILE_NAME}'.")
+            else:
+                print(f"ℹ️ {len(novos_produtos_df)} novos produtos encontrados para adicionar.")
+                novos_para_cadastro_list = []
+                for _, row in novos_produtos_df.iterrows():
+                    novos_para_cadastro_list.append({
+                        'ID': row['ID_Produto_XML'],
+                        'NOME_SISTEMA': row['Nome_Produto_XML'],
+                        'SESSÃO': 'SEÇÃO NÃO ESPECIFICADA',
+                        'NOME_CORRIGIDO': row['Nome_Produto_XML']
+                    })
+                df_novos_formatados = pd.DataFrame(novos_para_cadastro_list, columns=cols_cadastro_base_ordenadas)
+                df_cadastro_base = pd.concat([df_cadastro_base, df_novos_formatados], ignore_index=True)
+                df_cadastro_base.drop_duplicates(subset=['ID'], keep='first', inplace=True)
 
     try:
-        df_cadastro_base = df_cadastro_base.reindex(columns=cols_cadastro_base_ordenadas)
-        df_cadastro_base.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID']).to_excel(path_cadastro_base, index=False)
-        if not novos_produtos_df.empty:
-            print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' atualizado com {len(novos_produtos_df)} novos produtos.")
-        else:
-            print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' salvo.")
+        # 1. Preparar e salvar o DataFrame com pandas (isso define a estrutura e dados)
+        df_para_salvar = df_cadastro_base.reindex(columns=cols_cadastro_base_ordenadas)
+        df_para_salvar = df_para_salvar.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID'])
+
+        # Certificar que a coluna ID é numérica antes de salvar, se ela existir
+        if 'ID' in df_para_salvar.columns:
+            df_para_salvar['ID'] = pd.to_numeric(df_para_salvar['ID'], errors='coerce')
+
+        df_para_salvar.to_excel(path_cadastro_base, index=False)
+
+        # 2. Reabrir com openpyxl para aplicar formatação de cores
+        if not df_para_salvar.empty or os.path.exists(path_cadastro_base): # Prosseguir se o arquivo existe
+            # Definir estilos de preenchimento
+            green_fill = PatternFill(start_color="45A045", end_color="45A045", fill_type="solid") # Verde mais claro
+            no_fill = PatternFill(fill_type=None) # Sem preenchimento
+
+            # Obter IDs dos produtos presentes nos XMLs desta execução
+            ids_produtos_oferta_xml = set()
+            if not df_ofertas_xml.empty and 'ID_Produto_XML' in df_ofertas_xml.columns:
+                ids_produtos_oferta_xml = set(df_ofertas_xml['ID_Produto_XML'].dropna().astype(int).unique())
+
+            produtos_coloridos_info_list = [] # Para listar os produtos coloridos
+
+            wb = load_workbook(path_cadastro_base)
+            ws = wb.active
+
+            # Encontrar o índice da coluna 'ID' (1-based para openpyxl)
+            id_col_index = None
+            nome_corrigido_col_index = None
+            nome_sistema_col_index = None
+
+            if ws.max_row > 0: # Se a planilha não estiver completamente vazia
+                header_cells = ws[1] # Primeira linha (cabeçalho)
+                for i, cell in enumerate(header_cells):
+                    if cell.value == 'ID':
+                        id_col_index = i + 1
+                    elif cell.value == 'NOME_CORRIGIDO':
+                        nome_corrigido_col_index = i + 1
+                    elif cell.value == 'NOME_SISTEMA':
+                        nome_sistema_col_index = i + 1
+
+            if id_col_index is None and ws.max_row > 0:
+                print(f"⚠️  Aviso: Coluna 'ID' não encontrada no cabeçalho de '{PRODUCT_MASTER_FILE_NAME}'. Não será possível aplicar cores.")
+            elif ws.max_row <= 1 and not ids_produtos_oferta_xml : # Arquivo só com cabeçalho ou vazio, e sem produtos XML
+                 print(f"ℹ️  Arquivo '{PRODUCT_MASTER_FILE_NAME}' está vazio ou contém apenas cabeçalho e não há produtos XML para colorir.")
+            elif ws.max_row > 1 and id_col_index is not None: # Prossegue apenas se há dados e coluna ID foi encontrada
+                # Iterar pelas linhas de dados (a partir da segunda linha)
+                for row_num in range(2, ws.max_row + 1):
+                    # Primeiro, limpar a cor de todas as células da linha
+                    for col_num in range(1, ws.max_column + 1):
+                        ws.cell(row=row_num, column=col_num).fill = no_fill
+
+                    # Verificar se o ID desta linha está nos produtos da oferta XML
+                    id_cell_value = ws.cell(row=row_num, column=id_col_index).value
+                    if id_cell_value is not None:
+                        try:
+                            current_id = int(float(id_cell_value)) # Tenta converter para float primeiro, depois int
+                            if current_id in ids_produtos_oferta_xml:
+                                # Colorir todas as células da linha de verde
+                                for col_num in range(1, ws.max_column + 1):
+                                    ws.cell(row=row_num, column=col_num).fill = green_fill
+
+                                # Coletar informação do produto colorido
+                                nome_produto = "NOME NÃO ENCONTRADO"
+                                if nome_corrigido_col_index and ws.cell(row=row_num, column=nome_corrigido_col_index).value:
+                                    nome_produto = ws.cell(row=row_num, column=nome_corrigido_col_index).value
+                                elif nome_sistema_col_index and ws.cell(row=row_num, column=nome_sistema_col_index).value:
+                                     nome_produto = ws.cell(row=row_num, column=nome_sistema_col_index).value
+
+                                produtos_coloridos_info_list.append({'ID': current_id, 'Nome': nome_produto})
+                        except ValueError:
+                            # Se não puder converter para int diretamente, não é um ID válido para comparação.
+                            # Isso pode acontecer se a célula ID tiver texto ou estiver vazia após coerção.
+                            # print(f"⚠️  Aviso: Valor não numérico ou inválido para ID na linha {row_num} de '{PRODUCT_MASTER_FILE_NAME}': '{id_cell_value}'. Pulando coloração.")
+                            pass # Silenciosamente ignora linhas onde ID não é numérico
+                        except TypeError:
+                            # print(f"⚠️  Aviso: Tipo inesperado para ID na linha {row_num} de '{PRODUCT_MASTER_FILE_NAME}': '{id_cell_value}'. Pulando coloração.")
+                            pass # Silenciosamente ignora
+
+
+            wb.save(path_cadastro_base)
+
+            if not novos_produtos_df.empty:
+                print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' atualizado com {len(novos_produtos_df)} novos produtos e formatação de cores aplicada.")
+            else:
+                print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' salvo com formatação de cores aplicada.")
+
+            if produtos_coloridos_info_list:
+                print(f"ℹ️ Produtos das ofertas XML (coloridos em verde em '{PRODUCT_MASTER_FILE_NAME}'):")
+                # Remover duplicados da lista de informação antes de imprimir, caso um produto seja processado múltiplas vezes
+                unique_produtos_coloridos = [dict(t) for t in {tuple(d.items()) for d in produtos_coloridos_info_list}]
+                for prod_info in sorted(unique_produtos_coloridos, key=lambda x: x['ID']):
+                    print(f"  - ID: {prod_info['ID']}, Nome: {str(prod_info['Nome'])}") # Garantir que Nome seja string
+            elif ids_produtos_oferta_xml: # Havia produtos no XML, mas não foram encontrados no arquivo base ou ID não encontrado
+                print(f"ℹ️ Havia {len(ids_produtos_oferta_xml)} produtos nas ofertas XML, mas nenhum correspondente foi encontrado ou pode ser colorido em '{PRODUCT_MASTER_FILE_NAME}'.")
+                # print(f"   Verifique se os IDs dos produtos XML (ex: {list(ids_produtos_oferta_xml)[:5]}...) existem na coluna 'ID' do arquivo Excel e são numéricos.")
+            else:
+                print(f"ℹ️ Nenhum produto das ofertas XML para colorir em '{PRODUCT_MASTER_FILE_NAME}'.")
+
+
     except Exception as e:
-        print(f"❌ Erro ao salvar '{PRODUCT_MASTER_FILE_NAME}': {e}")
+        print(f"❌ Erro ao salvar ou formatar '{PRODUCT_MASTER_FILE_NAME}': {e}")
         traceback.print_exc()
 
 def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame) -> None:
@@ -259,6 +360,11 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame) -> None:
 
     df_ofertas_xml_copy = df_ofertas_xml[required_xml_cols].copy()
     df_cadastro_base_copy = df_cadastro_base[['ID', 'SESSÃO', 'NOME_CORRIGIDO']].copy()
+
+    # Garantir que as colunas de merge sejam do mesmo tipo (int)
+    df_ofertas_xml_copy['ID_Produto_XML'] = pd.to_numeric(df_ofertas_xml_copy['ID_Produto_XML'], errors='coerce').astype('Int64')
+    df_cadastro_base_copy['ID'] = pd.to_numeric(df_cadastro_base_copy['ID'], errors='coerce').astype('Int64')
+
 
     df_merged = pd.merge(
         df_ofertas_xml_copy,
@@ -340,18 +446,22 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame) -> None:
             formato_contabil = 'R$ #,##0.00'
 
             col_idx_valor_promo_excel = -1
-            if df_output_excel.columns[-1] == 'PROMOÇÃO':
-                col_idx_valor_promo_excel = len(df_output_excel.columns)
+            if 'PROMOÇÃO' in df_output_excel.columns:
+                # Encontra o índice da coluna 'PROMOÇÃO' (base 1 para openpyxl)
+                col_idx_valor_promo_excel = df_output_excel.columns.get_loc('PROMOÇÃO') + 1
             else:
-                print(f"⚠️ Aviso: A última coluna não é 'PROMOÇÃO' (valor). É '{df_output_excel.columns[-1]}'. Não formatando como contábil.")
+                print(f"⚠️ Aviso: A coluna 'PROMOÇÃO' não foi encontrada no output. Não formatando como contábil.")
+
 
             for row_idx_excel in range(1, ws.max_row + 1):
-                # CORREÇÃO APLICADA AQUI:
                 is_spacer_row = all(
                     (ws.cell(row=row_idx_excel, column=c_idx_excel).value is None or
-                     ws.cell(row=row_idx_excel, column=c_idx_excel).value == '')
+                     str(ws.cell(row=row_idx_excel, column=c_idx_excel).value).strip() == '' or
+                     pd.isna(ws.cell(row=row_idx_excel, column=c_idx_excel).value)
+                    )
                     for c_idx_excel in range(1, ws.max_column + 1)
                 )
+
 
                 if is_spacer_row:
                     continue
@@ -362,18 +472,19 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame) -> None:
 
                     if row_idx_excel > 1 and col_idx_excel == col_idx_valor_promo_excel and cell.value is not None:
                         if isinstance(cell.value, (int, float)):
-                            if cell.value == 0.0 and str(cell.value) == "0.0":
+                            if cell.value == 0.0 and str(cell.value) == "0.0": # Tratar 0.0 especificamente
                                 cell.value = 0.00
                             cell.number_format = formato_contabil
                         else:
                             try:
                                 val_str = str(cell.value).upper().replace("R$", "").replace(".", "").replace(",", ".").strip()
-                                if val_str:
+                                if val_str: # Evitar erro com string vazia
                                     numeric_value = float(val_str)
                                     cell.value = numeric_value
                                     cell.number_format = formato_contabil
                             except ValueError:
-                                print(f"⚠️ Não foi possível converter '{cell.value}' para número na L{row_idx_excel}C{col_idx_excel}. Mantido como texto.")
+                                # print(f"⚠️ Não foi possível converter '{cell.value}' para número na L{row_idx_excel}C{col_idx_excel}. Mantido como texto.")
+                                pass # Silenciosamente mantém como texto
 
             for col_idx_openpyxl in range(1, ws.max_column + 1):
                 column_letter = get_column_letter(col_idx_openpyxl)
@@ -395,8 +506,9 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame) -> None:
 
                         max_len = max(max_len, current_len)
 
-                adjusted_width = min(max_len + 3, 50)
-                ws.column_dimensions[column_letter].width = adjusted_width if adjusted_width > 5 else 10
+                adjusted_width = min(max_len + 3, 50) # Ajusta a largura, max 50
+                ws.column_dimensions[column_letter].width = adjusted_width if adjusted_width > 5 else 10 # Largura mínima de 10, a menos que seja muito pequeno
+
 
         num_ofertas_reais = len(df_ordenado.dropna(subset=['PRODUTO'], how='all'))
         print(f"✅ Relatório '{FINAL_OFFERS_REPORT_NAME}' criado com {num_ofertas_reais} ofertas na raiz do projeto.")
@@ -430,19 +542,26 @@ def main() -> None:
     ]
     if not arquivos_xml_para_processar:
         print(f"ℹ️ Nenhum arquivo XML para processar em '{INPUT_XML_DIR}' após normalização.")
-        print("🏁 Processamento concluído (sem dados processados).")
-        return
+        # Continua para permitir que atualizar_cadastro_produtos_base seja chamado para limpar cores, se o arquivo existir
+        # print("🏁 Processamento concluído (sem dados processados).")
+        # return # Removido para permitir a limpeza de cores mesmo sem XMLs
 
     print(f"📄 Consolidando dados de {len(arquivos_xml_para_processar)} arquivos XML...")
     df_ofertas_consolidadas_xml = consolidar_dados_de_xmls(arquivos_xml_para_processar)
 
+    # Não retorna mais se df_ofertas_consolidadas_xml estiver vazio,
+    # pois queremos que atualizar_cadastro_produtos_base seja chamado para limpar cores e possivelmente listar produtos antigos.
     if df_ofertas_consolidadas_xml.empty:
-        print("ℹ️ Nenhum dado de produto foi consolidado dos arquivos XML.")
-        print("🏁 Processamento concluído (sem dados para gerar relatórios).")
-        return
+        print("ℹ️ Nenhum dado de produto foi consolidado dos arquivos XML nesta execução.")
+        # print("🏁 Processamento concluído (sem dados para gerar relatórios).") # Movido para depois
+        # return
 
     print(f"💾 Atualizando o arquivo de cadastro de produtos: './{PRODUCT_MASTER_FILE_NAME}'...")
-    atualizar_cadastro_produtos_base(df_ofertas_consolidadas_xml)
+    atualizar_cadastro_produtos_base(df_ofertas_consolidadas_xml) # df_ofertas_xml pode estar vazio aqui
+
+    if df_ofertas_consolidadas_xml.empty: # Verifica novamente aqui antes de gerar relatório final
+        print("🏁 Processamento concluído (sem dados XML para gerar relatório de ofertas).")
+        return
 
     print(f"📊 Gerando o relatório final de ofertas: './{FINAL_OFFERS_REPORT_NAME}'...")
     gerar_relatorio_ofertas_finais(df_ofertas_consolidadas_xml)

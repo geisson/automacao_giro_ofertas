@@ -385,3 +385,4 @@ Gostaria que a classificação dos produtos tambem refletisse a localização do
 #02 MERCEARIA - FARINHAS E DERIVADOS
 
 
+Analize o seguinte script. quero adicionar a seguinte funcionalidade para manipulação do arquivo `produtos_cadastrados.xlsx`: ao executar o script, deve-se limpar todas as cores da tabela, e, depois, colorir todos as linhas de todos os produtos adicionados dos arquivos .xml de `arquivos_xml_entrada/` com a cor verde. quero saber quais foram am os produtos adicionados. dessa forma, posso saber quais são os produtos das ofertas em `produtos_cadastrados.xlsx`, deixando claro, na cor verde, quais são os produtos que estão na oferta.
