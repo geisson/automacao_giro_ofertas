@@ -71,18 +71,19 @@ COLUMNS_FORMATTING_CONFIG = {
         'font_color': "000000", # Azul escuro
     },
     'ID': {
-        'font_size': 9 ,
+        'font_size': 7 ,
         'number_format': '0', # Número inteiro
     },
     'PRODUTO': {
         'font_size': 9,
     },
     'TIPO': {
-        'font_size': 7,
+        'font_size': 9,
         'font_color': "000000", # Cinza
+        'font_italic': True
     },
     'PROMOÇÃO': {
-        'font_size': 9,
+        'font_size': 10,
         'font_color': "000000", # Verde escuro para promoção
         'font_bold': True,
         'number_format': 'R$ #,##0.00', # Formato Contábil Brasileiro
