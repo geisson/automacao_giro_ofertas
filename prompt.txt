@@ -498,3 +498,79 @@ FARINHA DE MILHO SINHA 500G BIJU	              |       |R$ 3,99
 
 
 gostaria de poder configurar o tamanho da fonte, cor, se é negrito, tipo de dado de cada coluna da tabela `giro_da_praça_ofertas.xlsx`
+
+
+o funcionamento do script esta perfeito. muito bom mesmo, voce esta de parabens.
+mas surgiu outra funcionalidade que preciso.
+muitas vezes as ofertas são atualizadas, então preciso que as atualizações fiquem em destaque.
+o que que pensei foi criar dois comandos CLI, um para criar as ofertas do zero, como é atualmente, e outro comando para atualizar ofertas, que vai fazer a mesma atualmente, porem, deve destacar a linha do produto que mudar de preço ou que foi acrescentada, no arquvico `giro_da_praça_ofertas.xlsx`, quero que o fundo dessas linhas sejam verdes com a fonte branca.
+
+
+
+
+
+muito bom, esta tudo funcionando. porem, a parte de configuração de formatação não esta funcionando.
+essa parte não esta mais no codigo, preciso que ela fique no codigo e tambem que funcione:
+
+# Configuração de Formatação de Colunas para giro_da_praça_ofertas.xlsx
+# Cores são em formato ARGB (ex: "FF000000" para preto opaco, "000000" é o mesmo que "FF000000")
+COLUMNS_FORMATTING_CONFIG = {
+  '_DEFAULT_': {
+      'font_name': 'Calibri',
+      'font_size': 10,
+      'font_color': "000000", # Preto
+      'font_bold': False,
+      'font_italic': False,
+      'number_format': '@',    # Formato de texto por padrão
+      'alignment_horizontal': 'left',
+      'alignment_vertical': 'center',
+
+      'header_font_name': 'Calibri',
+      'header_font_size': 9,
+      'header_font_color': "000000", # Branco
+      'header_font_bold': True,
+      'header_font_italic': False,
+      'header_fill_color': "ffffff", # Azul Padrão do Excel
+      'header_alignment_horizontal': 'left',
+      'header_alignment_vertical': 'center',
+  },
+  'NOME_PROMOÇÃO': {
+      'font_size': 7,
+      # Herda outras formatações do _DEFAULT_
+  },
+  'SESSÃO': {
+      'font_size': 7,
+      'font_color': "000000", # Azul escuro
+  },
+  'ID': {
+      'font_size': 7 ,
+      'number_format': '0', # Número inteiro
+  },
+  'PRODUTO': {
+      'font_size': 9,
+  },
+  'TIPO': {
+      'font_size': 9,
+      'font_color': "000000", # Cinza
+      'font_italic': True
+  },
+  'PROMOÇÃO': {
+      'font_size': 10,
+      'font_color': "000000", # Verde escuro para promoção
+      'font_bold': True,
+      'number_format': 'R$ #,##0.00', # Formato Contábil Brasileiro
+      'alignment_horizontal': 'right',
+  }
+}
+
+
+
+
+
+
+
+
+python processador_ofertas.py --mode create
+python processador_ofertas.py --mode update
+
+python processador_ofertas.py --mode create

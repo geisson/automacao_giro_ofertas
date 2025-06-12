@@ -1,119 +1,110 @@
-# Automação de Processamento de Ofertas XML
+# Processador de Ofertas XML para Excel
 
-Este script Python automatiza o processamento de arquivos XML contendo ofertas de produtos, gerando um relatório final em Excel com dados consolidados, corrigidos e formatados.
+Este script Python automatiza o processamento de arquivos XML contendo ofertas de produtos, consolida essas informações, atualiza um arquivo mestre de cadastro de produtos e gera um relatório final em formato Excel (`giro_da_praça_ofertas.xlsx`) com formatação avançada.
+
+## Comandos de Execução
+
+Para gerar o relatório do zero, substituindo qualquer versão anterior:
+
+```bash
+python processador_ofertas.py --mode create
+```
+
+ou simplesmente (pois `create` é o padrão):
+
+```bash
+python processador_ofertas.py
+```
+
+Para atualizar o relatório existente, destacando novos produtos ou alterações de preço:
+
+```bash
+python processador_ofertas.py --mode update
+```
 
 ## Funcionalidades Principais
 
-1. **Leitura de XMLs:**
-    * Lê múltiplos arquivos XML de um diretório de entrada especificado (`./arquivos_xml_entrada/`).
-    * Normaliza os nomes dos arquivos XML (converte para minúsculas e remove acentuação).
-    * Parseia os dados XML para extrair informações de produtos: ID, nome do produto no sistema, descrição da promoção e preço promocional.
+* **Leitura de Múltiplos XMLs:** Processa todos os arquivos `.xml` localizados no diretório `./arquivos_xml_entrada/`.
+* **Normalização de Nomes:** Renomeia arquivos XML para um formato padronizado (sem acentos, minúsculas).
+* **Consolidação de Dados:** Extrai informações de ID, nome do produto, preço promocional e descrição da promoção de cada XML.
+* **Atualização do Cadastro Mestre (`produtos_cadastrados.xlsx`):**
+  * Adiciona novos produtos encontrados nos XMLs ao arquivo de cadastro.
+  * Destaca (com fundo verde) os produtos no arquivo de cadastro que estão presentes nas ofertas XML da execução atual.
+  * Mantém o arquivo de cadastro ordenado.
+* **Geração de Relatório de Ofertas (`giro_da_praça_ofertas.xlsx`):**
+  * Agrupa produtos com o mesmo "nome base" (nome até a unidade/medida) e mesmo preço, criando uma coluna `TIPO` com as variações (ex: sabores, fragrâncias).
+  * Exceções de agrupamento podem ser definidas para seções específicas.
+  * Ordena o relatório por seções e insere linhas em branco entre grupos de seções.
+  * Aplica formatação detalhada por coluna (fonte, tamanho, cor, formato de número, alinhamento) conforme configurado em `COLUMNS_FORMATTING_CONFIG` no script.
+  * Remove linhas de grade do Excel.
+  * Aplica bordas às células de dados.
+  * Ajusta automaticamente a largura das colunas.
+* **Modo de Operação (`create` vs `update`):**
+  * **`create`**: Gera o relatório `giro_da_praça_ofertas.xlsx` do zero a cada execução.
+  * **`update`**: Compara o relatório gerado com uma versão anterior do `giro_da_praça_ofertas.xlsx`. Linhas correspondentes a produtos novos ou com alteração de preço são destacadas com fundo verde e fonte branca no relatório final.
 
-2. **Cadastro de Produtos (Correção e Enriquecimento):**
-    * Utiliza um arquivo Excel mestre (`./produtos_cadastrados.xlsx`) para armazenar uma lista de produtos com seus IDs, nomes originais do sistema, seções (categorias) e nomes corrigidos/padronizados.
-    * **Colunas do `produtos_cadastrados.xlsx`:**
-        * `ID`: Identificador único do produto.
-        * `SESSÃO`: Categoria/seção do produto (ex: "#01 MERCEARIA", "#03 LIMPEZA").
-        * `NOME_SISTEMA`: Nome do produto como vem originalmente do XML.
-        * `NOME_CORRIGIDO`: Nome do produto após correções manuais ou padronização.
-    * Ao processar novos XMLs, o script identifica produtos que ainda não existem no `produtos_cadastrados.xlsx` e os adiciona automaticamente. Novos produtos recebem "SEÇÃO NÃO ESPECIFICADA" como seção padrão e o `NOME_SISTEMA` como `NOME_CORRIGIDO` inicial, permitindo posterior edição manual no arquivo Excel.
+## Comandos de Execução
 
-3. **Consolidação e Geração de Relatório Final (`./giro_da_praça_ofertas.xlsx`):**
-    * Combina os dados das ofertas atuais (dos XMLs) com as informações do `produtos_cadastrados.xlsx` (seções e nomes corrigidos).
-    * **Agrupamento Inteligente de Produtos:**
-        * Produtos com o mesmo "nome base" (nome até a unidade/medida, ex: "PRODUTO X 500G") e mesmo preço promocional são agrupados em uma única linha no relatório final.
-        * Este agrupamento é **desabilitado** para produtos pertencentes a seções específicas (atualmente "#01 MERCEARIA - #01 ALTO GIRO" e "#01 MERCEARIA - #02 ALTO GIRO").
-    * **Ordenação:** As ofertas no relatório são ordenadas por uma chave de grupo de seção principal, depois pela seção completa e, por fim, pelo nome do produto.
-    * **Formatação do Excel:**
-        * O relatório final (`giro_da_praça_ofertas.xlsx`) é formatado para melhor legibilidade:
-            * Colunas na ordem: `NOME_PROMOÇÃO`, `SESSÃO`, `ID`, `PRODUTO`, `PROMOÇÃO` (valor).
-            * A coluna `PROMOÇÃO` (valor) é formatada como contábil (R$ #,##0.00).
-            * Bordas são aplicadas às células de dados.
-            * Linhas em branco são inseridas entre diferentes grupos principais de seções e **não** possuem bordas.
-            * A largura das colunas é ajustada automaticamente ao conteúdo.
-            * As linhas de grade padrão do Excel são ocultadas na planilha gerada.
+Para gerar o relatório do zero, substituindo qualquer versão anterior:
 
-## Como Usar
+```bash
+python processador_ofertas.py --mode create
+```
 
-### Pré-requisitos
+ou simplesmente (pois `create` é o padrão):
 
-* Python 3.7+
-* Bibliotecas Python (instalar via pip):
+```bash
+python processador_ofertas.py
+```
+
+Para atualizar o relatório existente, destacando novos produtos ou alterações de preço:
+
+```bash
+python processador_ofertas.py --mode update
+```
+
+## Estrutura de Diretórios Esperada
+
+```
+.
+├── arquivos_xml_entrada/      # Diretório para colocar os arquivos XML de entrada
+│   ├── oferta_loja1.xml
+│   └── oferta_loja2.xml
+├── produtos_cadastrados.xlsx  # Arquivo mestre de cadastro (criado/atualizado pelo script)
+├── giro_da_praça_ofertas.xlsx # Relatório final de ofertas (criado/atualizado pelo script)
+└── processador_ofertas.py     # Este script
+```
+
+## Pré-requisitos
+
+* Python 3.x
+* Bibliotecas Python listadas no script (pandas, openpyxl, xmltodict). Para instalar:
 
     ```bash
     pip install pandas openpyxl xmltodict
     ```
 
-### Estrutura de Pastas e Arquivos Esperada
+    (Recomenda-se o uso de um ambiente virtual Python)
 
-O script espera a seguinte estrutura na pasta raiz onde ele é executado:
+## Configuração
 
-```md
+* **Diretório de Entrada:** Os arquivos XML devem ser colocados em `./arquivos_xml_entrada/`.
+* **Nomes de Arquivos de Saída:** Definidos como constantes no script (`PRODUCT_MASTER_FILE_NAME`, `FINAL_OFFERS_REPORT_NAME`).
+* **Seções de Exceção para Agrupamento:** A constante `SECOES_EXCECAO_AGRUPAMENTO` no script define quais seções não devem ter seus produtos agrupados pela lógica de "nome base + preço".
+* **Formatação de Colunas:** A constante `COLUMNS_FORMATTING_CONFIG` no script permite personalizar a aparência de cada coluna no relatório `giro_da_praça_ofertas.xlsx`.
 
-seu_projeto/
-├── app.py (ou o nome do seu script principal)
-├── arquivos_xml_entrada/
-│   ├── oferta1.xml
-│   ├── oferta2.xml
-│   └── ... (outros arquivos XML de ofertas)
-└── produtos_cadastrados.xlsx (opcional na primeira execução, será criado se não existir)
+## Detalhes da Implementação
 
-```
+* **Tratamento de Texto:** Funções para remover acentuação e normalizar texto. Uma função específica (`extract_product_base_name`) usa regex para padronizar nomes de produtos e extrair a base para agrupamento.
+* **Processamento de XML:** Utiliza a biblioteca `xmltodict`.
+* **Manipulação de Dados:** Forte uso da biblioteca `pandas` para manipulação e agregação de dados.
+* **Interação com Excel:**
+  * `pandas` para leitura e escrita básica.
+  * `openpyxl` para formatação avançada (estilos, cores, bordas, largura de coluna).
+* **Tratamento de Erros:** Blocos `try-except` para lidar com arquivos ausentes, formatos inesperados, etc.
 
-* **`app.py`**: O script Python principal.
-* **`arquivos_xml_entrada/`**: Diretório onde os arquivos XML de ofertas devem ser colocados. O script irá ler todos os arquivos `.xml` desta pasta.
-* **`produtos_cadastrados.xlsx`**: Arquivo mestre para correções e categorização de produtos. Se não existir na primeira execução, o script o criará. É fundamental para manter os nomes dos produtos e suas seções corretas ao longo do tempo.
+## Possíveis Melhorias Futuras
 
-### Execução
-
-1. Certifique-se de que os pré-requisitos estão instalados.
-2. Coloque os arquivos XML de ofertas na pasta `./arquivos_xml_entrada/`.
-3. (Opcional, mas recomendado após a primeira execução) Verifique e edite o arquivo `./produtos_cadastrados.xlsx` para corrigir nomes de produtos ou atribuir seções.
-4. Execute o script Python a partir da pasta raiz do projeto:
-
-    ```bash
-    python app.py
-    ```
-
-### Saídas
-
-* **`./produtos_cadastrados.xlsx`**: Será criado ou atualizado com novos produtos encontrados nos XMLs.
-* **`./giro_da_praça_ofertas.xlsx`**: O relatório final consolidado e formatado com as ofertas processadas.
-
-## Configuração Interna (Constantes no Script)
-
-* `INPUT_XML_DIR`: Diretório de entrada para os arquivos XML (padrão: `./arquivos_xml_entrada/`).
-* `PRODUCT_MASTER_FILE_NAME`: Nome do arquivo de cadastro de produtos (padrão: `produtos_cadastrados.xlsx`).
-* `FINAL_OFFERS_REPORT_NAME`: Nome do arquivo de relatório final (padrão: `giro_da_praça_ofertas.xlsx`).
-* `SECOES_EXCECAO_AGRUPAMENTO`: Lista de seções cujos produtos não devem ser agrupados mesmo que atendam aos critérios de nome e preço (padrão: `["#01 MERCEARIA - #01 ALTO GIRO", "#01 MERCEARIA - #02 ALTO GIRO"]`).
-
-## Lógica XML Esperada
-
-O script espera que os dados dos produtos dentro do XML estejam em uma estrutura similar a:
-
-```xml
-<temporario_846>
-  <temporario_846_row>
-    <idsubproduto>12345</idsubproduto>
-    <descrresproduto>NOME DO PRODUTO ABC 500G</descrresproduto>
-    <precopromocao>10.99</precopromocao>
-    <descrpromocao>OFERTA ESPECIAL</descrpromocao>
-    <!-- outros campos -->
-  </temporario_846_row>
-  <temporario_846_row>
-    <!-- ... outro produto ... -->
-  </temporario_846_row>
-</temporario_846>
-```
-
-As tags relevantes são `idsubproduto`, `descrresproduto`, `precopromocao`, e `descrpromocao` dentro de cada `temporario_846_row`.
-
-## Solução de Problemas e Avisos
-
-* **`FutureWarning` do Pandas:** O script foi atualizado para seguir as recomendações do Pandas e evitar estes avisos em versões futuras.
-* **Avisos de Conversão de Número no Excel:** Se um produto no XML tiver um preço promocional vazio ou não numérico, o script tentará converter para 0.0. Se a conversão para formato contábil no Excel falhar para algum valor específico, uma mensagem de aviso será exibida, e o valor será mantido como texto.
-* **Bordas em Linhas de Espaçamento:** A lógica foi refinada para garantir que as linhas em branco (espaçadoras) entre seções no relatório final não recebam bordas. As linhas de grade padrão do Excel também são desabilitadas para esta planilha.
-
----
-
-Desenvolvido para otimizar o processo de criação de relatórios de ofertas.
+* Extrair configurações (como `SECOES_EXCECAO_AGRUPAMENTO` e `COLUMNS_FORMATTING_CONFIG`) para um arquivo de configuração externo (JSON, YAML).
+* Adicionar logging mais detalhado para um arquivo de log.
+* Interface gráfica simples para usuários não técnicos.
