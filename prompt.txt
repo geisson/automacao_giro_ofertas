@@ -581,6 +581,11 @@ analize o seguinte script. nele, a planilha `giro_da_praça_ofertas.xlsx` e orga
 
 quero que a organização seja em ordem alfabetica, seguinte a seguinte ordem: NOME_PROMOÇÃO	-> SESSÃO -> PRODUTO
 
+o script esta funcionando perfeitamente. mas gostaria de adicionar uma funcionalidade de ordenação. atualmente, a planilha `giro_da_praça_ofertas.xlsx` é organizada pela coluna `NOME_PROMOÇÃO`, mas quero que ela possa ser organizada por qualquer coluna que eu escolher. preciso que eu possa definir uma ou mais constante global que determine a coluna de ordenação, e que essa constante possa ser facilmente modificada para alterar a ordenação da planilha. a ordenação deve ser feita de forma ascendente ou descendente, dependendo do valor da constante global.
+
+
+muito bem. esta funcionando perfeitamente. mas eu gostaria de fazer outra modificação em relação a ordenação da tabela. primeiro eu peidi
+
 
 
 o seguinte script esta funcionando perfeitamente, porem, qualquer mudança é muito problematica.
@@ -617,3 +622,41 @@ quero que voce refatore todo o script, deixando ele mais modular e organizado, u
 
 <script>
 </script>
+
+o script esta funcionado muito bem. porem no agrupamente quando a a coluna 'SESSÃO' é selecionada, a geração de linhas em branco esta sendo aplicada de maneira errada, pois esta dividindo todas as sessões diferentes em linhas em branco. o comportamento correto deve ser o mesmo quando a coluna 'NOME_PROMOÇÃO' é selecionada.
+
+exemplo do que esta acontecendo:
+#01 MERCEARIA - #01 CEREAIS E GRÃOS
+#01 MERCEARIA - #01 CEREAIS E GRÃOS
+# ESPAÇO EM BRANCO
+#01 MERCEARIA - #02 AÇÚCAR E ADOÇANTES
+# ESPAÇO EM BRANCO
+#01 MERCEARIA - #02 FEIJÕES E LEGUMINOSAS
+#01 MERCEARIA - #02 FEIJÕES E LEGUMINOSAS
+# ESPAÇO EM BRANCO
+#01 MERCEARIA - #02 ÓLEOS E GORDURAS
+# ESPAÇO EM BRANCO
+#02 MERCEARIA - ACHOCOLATADOS E CAFÉ
+#02 MERCEARIA - ACHOCOLATADOS E CAFÉ
+# ESPAÇO EM BRANCO
+#02 MERCEARIA - BISCOITOS E SALGADINHOS
+#02 MERCEARIA - BISCOITOS E SALGADINHOS
+# ESPAÇO EM BRANCO
+#02 MERCEARIA - CONDIMENTOS E TEMPEROS
+#02 MERCEARIA - CONDIMENTOS E TEMPEROS
+
+
+Como deve ser o comportamento correto:
+#01 MERCEARIA - #01 CEREAIS E GRÃOS
+#01 MERCEARIA - #01 CEREAIS E GRÃOS
+#01 MERCEARIA - #02 AÇÚCAR E ADOÇANTES
+#01 MERCEARIA - #02 FEIJÕES E LEGUMINOSAS
+#01 MERCEARIA - #02 FEIJÕES E LEGUMINOSAS
+#01 MERCEARIA - #02 ÓLEOS E GORDURAS
+# ESPAÇO EM BRANCO
+#02 MERCEARIA - ACHOCOLATADOS E CAFÉ
+#02 MERCEARIA - ACHOCOLATADOS E CAFÉ
+#02 MERCEARIA - BISCOITOS E SALGADINHOS
+#02 MERCEARIA - BISCOITOS E SALGADINHOS
+#02 MERCEARIA - CONDIMENTOS E TEMPEROS
+#02 MERCEARIA - CONDIMENTOS E TEMPEROS
