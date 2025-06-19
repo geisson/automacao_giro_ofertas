@@ -1,46 +1,31 @@
 # -*- coding: utf-8 -*-
-"""
-Script para processamento de arquivos XML de ofertas (processador_ofertas.py).
-V9.3: Reintroduzida e aplicada a COLUMNS_FORMATTING_CONFIG para formatação
-      detalhada de colunas no relatório 'giro_da_praça_ofertas.xlsx'.
-      A formatação de destaque (modo update) tem precedência para fundo/fonte.
-V9.5 (Solicitado): Alterada a organização do relatório 'giro_da_praça_ofertas.xlsx'
-      para NOME_PROMOÇÃO -> SESSÃO -> PRODUTO, e reintroduzido espaçamento
-      entre grupos de seção dentro da mesma promoção.
-"""
-
-# ------------------------------------------
-# DEPENDÊNCIAS
-# ------------------------------------------
 import pandas as pd
 import os
 import glob
-import xmltodict # Certifique-se de que está instalado: pip install xmltodict
-from typing import List, Dict, Any, Optional
+import xmltodict
+from typing import List, Dict, Any, Optional, Tuple, Set
 import re
 import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 import traceback
-import argparse # Para argumentos CLI
+import argparse
 
 # ------------------------------------------
-# CONSTANTES
+# CONSTANTES E CONFIGURAÇÕES GLOBAIS
 # ------------------------------------------
-INPUT_XML_DIR = './arquivos_xml_entrada/'
-XML_EXTENSION = '.xml'
-PRODUCT_MASTER_FILE_NAME = 'produtos_cadastrados.xlsx'
-FINAL_OFFERS_REPORT_NAME = 'giro_da_praça_ofertas.xlsx'
+DIRETORIO_ENTRADA_XML = './arquivos_xml_entrada/'
+EXTENSAO_XML = '.xml'
+NOME_ARQUIVO_MESTRE_PRODUTOS = 'produtos_cadastrados.xlsx'
+NOME_RELATORIO_FINAL_OFERTAS = 'giro_da_praça_ofertas.xlsx'
 
 SECOES_EXCECAO_AGRUPAMENTO = ["#01 MERCEARIA - #01 ALTO GIRO", "#01 MERCEARIA - #02 ALTO GIRO"]
 
-# Estilos para destaque de linha no modo update
-HIGHLIGHT_FILL = PatternFill(start_color="45A045", end_color="45A045", fill_type="solid") # Verde
-HIGHLIGHT_FONT = Font(color="FFFFFF", bold=True) # Fonte Branca, Negrito
+PREENCHIMENTO_DESTAQUE = PatternFill(start_color="45A045", end_color="45A045", fill_type="solid")
+FONTE_DESTAQUE = Font(color="FFFFFF", bold=True)
 
-# Configuração de Formatação de Colunas para giro_da_praça_ofertas.xlsx
-COLUMNS_FORMATTING_CONFIG = {
+CONFIGURACAO_FORMATACAO_COLUNAS = {
   '_DEFAULT_': {
       'font_name': 'Calibri',
       'font_size': 10,
@@ -50,36 +35,21 @@ COLUMNS_FORMATTING_CONFIG = {
       'number_format': '@',
       'alignment_horizontal': 'left',
       'alignment_vertical': 'center',
-      'fill_color': None, # Sem preenchimento por padrão para dados
-
+      'fill_color': None,
       'header_font_name': 'Calibri',
       'header_font_size': 9,
       'header_font_color': "000000",
       'header_font_bold': True,
       'header_font_italic': False,
-      'header_fill_color': "FFFFFF", # Fundo branco para cabeçalho por padrão
+      'header_fill_color': "FFFFFF",
       'header_alignment_horizontal': 'left',
       'header_alignment_vertical': 'center',
   },
-  'NOME_PROMOÇÃO': {
-      'font_size': 7,
-  },
-  'SESSÃO': {
-      'font_size': 7,
-      'font_color': "000000",
-  },
-  'ID': {
-      'font_size': 7 ,
-      'number_format': '0',
-  },
-  'PRODUTO': {
-      'font_size': 9,
-  },
-  'TIPO': {
-      'font_size': 9,
-      'font_color': "000000",
-      'font_italic': True
-  },
+  'NOME_PROMOÇÃO': {'font_size': 7},
+  'SESSÃO': {'font_size': 7, 'font_color': "000000"},
+  'ID': {'font_size': 7 , 'number_format': '0'},
+  'PRODUTO': {'font_size': 9},
+  'TIPO': {'font_size': 9, 'font_color': "000000", 'font_italic': True},
   'PROMOÇÃO': {
       'font_size': 10,
       'font_color': "000000",
@@ -88,11 +58,11 @@ COLUMNS_FORMATTING_CONFIG = {
       'alignment_horizontal': 'right',
   }
 }
-# ------------------------------------------
-# FUNÇÕES PARA TRATAMENTO DE TEXTO
-# ------------------------------------------
 
-def remover_acentuacao(texto: str) -> str:
+# ------------------------------------------
+# FUNÇÕES UTILITÁRIAS DE TEXTO (PURAS)
+# ------------------------------------------
+def remover_acentos_de_texto(texto: str) -> str:
     if not isinstance(texto, str): return ""
     mapeamento_acentos = {
         'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'à': 'a', 'è': 'e', 'ì': 'i', 'ò': 'o', 'ù': 'u',
@@ -104,91 +74,91 @@ def remover_acentuacao(texto: str) -> str:
     }
     return ''.join(mapeamento_acentos.get(c, c) for c in texto)
 
-def normalizar_texto(texto: str) -> str:
+def normalizar_texto_para_comparacao(texto: str) -> str:
     if not isinstance(texto, str): return ""
-    texto_sem_acentos = remover_acentuacao(texto)
+    texto_sem_acentos = remover_acentos_de_texto(texto)
     return texto_sem_acentos.lower()
 
 # ------------------------------------------
-# FUNÇÕES PARA MANIPULAÇÃO DE ARQUIVOS
+# FUNÇÕES UTILITÁRIAS DE SISTEMA DE ARQUIVOS (COM EFEITOS COLATERAIS)
 # ------------------------------------------
+def listar_arquivos_por_extensao(diretorio: str, extensao: str) -> List[str]:
+    return glob.glob(os.path.join(diretorio, f'*{extensao}'))
 
-def listar_arquivos_xml(diretorio: str) -> List[str]:
-    return glob.glob(os.path.join(diretorio, f'*{XML_EXTENSION}'))
-
-def renomear_arquivo(arquivo_antigo: str, diretorio: str) -> None:
-    nome_arquivo = os.path.basename(arquivo_antigo)
-    novo_nome = normalizar_texto(nome_arquivo)
-    novo_caminho = os.path.join(diretorio, novo_nome)
+def renomear_arquivo_individual(caminho_antigo: str, novo_diretorio: str) -> None:
+    nome_arquivo_base = os.path.basename(caminho_antigo)
+    novo_nome_base = normalizar_texto_para_comparacao(nome_arquivo_base)
+    novo_caminho_completo = os.path.join(novo_diretorio, novo_nome_base)
     try:
-        if arquivo_antigo != novo_caminho:
-            os.rename(arquivo_antigo, novo_caminho)
+        if caminho_antigo != novo_caminho_completo:
+            os.rename(caminho_antigo, novo_caminho_completo)
     except FileExistsError:
-        print(f"⚠️  Arquivo '{novo_caminho}' já existe. Não foi renomeado '{arquivo_antigo}'.")
+        print(f"⚠️  Arquivo '{novo_caminho_completo}' já existe. Não foi renomeado '{caminho_antigo}'.")
     except Exception as e:
-        print(f"❌ Erro ao renomear '{arquivo_antigo}' para '{novo_caminho}': {e}")
+        print(f"❌ Erro ao renomear '{caminho_antigo}' para '{novo_caminho_completo}': {e}")
 
-def renomear_arquivos_em_lote(arquivos: List[str], diretorio: str) -> None:
-    for arquivo in arquivos:
-        renomear_arquivo(arquivo, diretorio)
+def normalizar_nomes_arquivos_xml_em_lote(arquivos_xml_entrada: List[str], diretorio_xml: str) -> None:
+    print(f"🔄 Normalizando nomes de {len(arquivos_xml_entrada)} arquivos XML...")
+    for caminho_arquivo in arquivos_xml_entrada:
+        renomear_arquivo_individual(caminho_arquivo, diretorio_xml)
 
 # ------------------------------------------
-# FUNÇÕES PARA PROCESSAMENTO DE XML
+# FUNÇÕES DE PROCESSAMENTO DE XML
 # ------------------------------------------
-
-def parse_produto_xml(produto_xml_data: Dict[str, Any]) -> Dict[str, Any]:
+def converter_dados_produto_xml_para_dicionario(dados_produto_xml: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "Promoção_XML": produto_xml_data.get('descrpromocao', ''),
-        "ID_Produto_XML": int(produto_xml_data.get('idsubproduto', 0)),
-        "Nome_Produto_XML": produto_xml_data.get('descrresproduto', ''),
-        "Preco_Promocao_XML": float(produto_xml_data.get('precopromocao', 0.0) if produto_xml_data.get('precopromocao') not in [None, ''] else 0.0)
+        "Promoção_XML": dados_produto_xml.get('descrpromocao', ''),
+        "ID_Produto_XML": int(dados_produto_xml.get('idsubproduto', 0)),
+        "Nome_Produto_XML": dados_produto_xml.get('descrresproduto', ''),
+        "Preco_Promocao_XML": float(dados_produto_xml.get('precopromocao', 0.0) if dados_produto_xml.get('precopromocao') not in [None, ''] else 0.0)
     }
 
-def processar_arquivo_xml(nome_arquivo_xml: str) -> List[Dict[str, Any]]:
-    caminho_arquivo = os.path.join(INPUT_XML_DIR, nome_arquivo_xml)
+def ler_e_extrair_produtos_de_arquivo_xml(nome_arquivo_xml: str, diretorio_xml: str) -> List[Dict[str, Any]]:
+    caminho_completo_arquivo = os.path.join(diretorio_xml, nome_arquivo_xml)
     try:
-        with open(caminho_arquivo, 'rb') as arquivo_xml:
-            dados_xml = xmltodict.parse(arquivo_xml)
-            if 'temporario_846' not in dados_xml:
+        with open(caminho_completo_arquivo, 'rb') as arquivo_xml:
+            dados_xml_lidos = xmltodict.parse(arquivo_xml)
+            if 'temporario_846' not in dados_xml_lidos:
                 print(f"⚠️ Estrutura 'temporario_846' não encontrada em {nome_arquivo_xml}.")
                 return []
-            temporario_846 = dados_xml['temporario_846']
-            produtos_data_xml = temporario_846.get('temporario_846_row', [])
-            if isinstance(produtos_data_xml, dict):
-                produtos_data_xml = [produtos_data_xml]
-            if not produtos_data_xml:
+
+            conteudo_temporario_846 = dados_xml_lidos['temporario_846']
+            lista_produtos_xml_bruto = conteudo_temporario_846.get('temporario_846_row', [])
+
+            if isinstance(lista_produtos_xml_bruto, dict):
+                lista_produtos_xml_bruto = [lista_produtos_xml_bruto]
+
+            if not lista_produtos_xml_bruto:
                 return []
-            return [parse_produto_xml(p) for p in produtos_data_xml if isinstance(p, dict)]
+
+            return [converter_dados_produto_xml_para_dicionario(p) for p in lista_produtos_xml_bruto if isinstance(p, dict)]
     except FileNotFoundError:
-        print(f"❌ Arquivo XML não encontrado: {caminho_arquivo}")
+        print(f"❌ Arquivo XML não encontrado: {caminho_completo_arquivo}")
         return []
     except Exception as e:
         print(f"❌ Erro ao processar XML {nome_arquivo_xml}: {e}")
         traceback.print_exc()
         return []
 
-# ------------------------------------------
-# FUNÇÃO PARA CONSOLIDAÇÃO DE DADOS XML
-# ------------------------------------------
+def consolidar_dados_de_multiplos_arquivos_xml(lista_nomes_arquivos_xml: List[str], diretorio_xml: str) -> pd.DataFrame:
+    lista_global_produtos = []
+    print(f"📄 Consolidando dados de {len(lista_nomes_arquivos_xml)} arquivos XML...")
+    for nome_arquivo in lista_nomes_arquivos_xml:
+        produtos_deste_arquivo = ler_e_extrair_produtos_de_arquivo_xml(nome_arquivo, diretorio_xml)
+        if produtos_deste_arquivo:
+            lista_global_produtos.extend(produtos_deste_arquivo)
+            print(f"✅ {nome_arquivo}: {len(produtos_deste_arquivo)} produtos processados.")
 
-def consolidar_dados_de_xmls(lista_arquivos_xml: List[str]) -> pd.DataFrame:
-    todos_produtos_lista = []
-    for arquivo_nome in lista_arquivos_xml:
-        produtos_do_arquivo = processar_arquivo_xml(arquivo_nome)
-        if produtos_do_arquivo:
-            todos_produtos_lista.extend(produtos_do_arquivo)
-            print(f"✅ {arquivo_nome}: {len(produtos_do_arquivo)} produtos processados.")
-    if not todos_produtos_lista:
+    if not lista_global_produtos:
         print("⚠️ Nenhum produto encontrado nos arquivos XML.")
         return pd.DataFrame()
-    return pd.DataFrame(todos_produtos_lista)
+    return pd.DataFrame(lista_global_produtos)
 
 # ------------------------------------------
-# FUNÇÕES AUXILIARES PARA INTEGRAÇÃO DE DADOS
+# FUNÇÕES AUXILIARES DE TRATAMENTO DE DADOS DE PRODUTO (PURAS)
 # ------------------------------------------
-
-def extract_product_base_name(product_name: str) -> str:
-    if not isinstance(product_name, str): return ""
+def extrair_nome_base_produto(nome_completo_produto: str) -> str:
+    if not isinstance(nome_completo_produto, str): return ""
     unidades = [
         "KILOGRAMAS", "KILOGRAMA", "QUILOGRAMAS", "QUILOGRAMA", "LITROS", "LITRO", "UNIDADES", "UNIDADE",
         "PACOTES", "PACOTE", "CAIXAS", "CAIXA", "FARDOS", "FARDO", "GARRAFAS", "GARRAFA", "LATAS", "LATA",
@@ -201,623 +171,710 @@ def extract_product_base_name(product_name: str) -> str:
         "UN", "UND", "UNID", "PC", "PÇ", "PCT", "CX", "FD", "GF", "LT", "PT", "RL", "SC", "TB", "VD",
         "BL", "CT", "DP", "GL", "RF", "TBL", "FL", "CAPS", "COMP", "ENV"
     ]
-    product_name_norm = ' '.join(product_name.split())
-    unidades_regex_part = "|".join(map(re.escape, sorted(unidades, key=len, reverse=True)))
-    regex_str = r"^(.*?)(\s?)(\d+[\.,]?\d*)(\s*)(" + unidades_regex_part + r")($|\s+.*$)"
-    match = re.match(regex_str, product_name_norm, re.IGNORECASE)
+    nome_produto_normalizado_espacos = ' '.join(nome_completo_produto.split())
+    padrao_regex_unidades = "|".join(map(re.escape, sorted(unidades, key=len, reverse=True)))
+    expressao_regular = r"^(.*?)(\s?)(\d+[\.,]?\d*)(\s*)(" + padrao_regex_unidades + r")($|\s+.*$)"
+    match = re.match(expressao_regular, nome_produto_normalizado_espacos, re.IGNORECASE)
 
     if match:
-        nome_antes_da_medida = match.group(1).strip()
-        quantidade = match.group(3)
+        parte_antes_medida = match.group(1).strip()
+        quantidade_texto = match.group(3)
         unidade_texto = match.group(5)
-        base_nome = f"{nome_antes_da_medida} {quantidade}{unidade_texto}".strip()
-        return ' '.join(base_nome.split())
-    return product_name_norm
+        nome_base = f"{parte_antes_medida} {quantidade_texto}{unidade_texto}".strip()
+        return ' '.join(nome_base.split())
+    return nome_produto_normalizado_espacos
 
-def extract_product_type_from_full_name(full_name: str, base_name: str) -> str:
-    if not isinstance(full_name, str) or not isinstance(base_name, str): return ""
-    full_name_norm = ' '.join(full_name.split())
-    base_name_norm = ' '.join(base_name.split())
-    if full_name_norm == base_name_norm: return ""
-    if full_name_norm.startswith(base_name_norm):
-        type_part = full_name_norm[len(base_name_norm):].strip()
-        type_part = re.sub(r"^[ \-\/\_]+", "", type_part).strip()
-        return type_part
+def extrair_tipo_variacao_produto(nome_completo_produto: str, nome_base_produto: str) -> str:
+    if not isinstance(nome_completo_produto, str) or not isinstance(nome_base_produto, str): return ""
+    nome_completo_norm = ' '.join(nome_completo_produto.split())
+    nome_base_norm = ' '.join(nome_base_produto.split())
+
+    if nome_completo_norm == nome_base_norm: return ""
+    if nome_completo_norm.startswith(nome_base_norm):
+        parte_tipo = nome_completo_norm[len(nome_base_norm):].strip()
+        parte_tipo = re.sub(r"^[ \-\/\_]+", "", parte_tipo).strip()
+        return parte_tipo
     return ""
 
-def get_section_sort_key(section_name: Any) -> str:
-    if not isinstance(section_name, str) or pd.isna(section_name): return "SEM SEÇÃO DEFINIDA"
-    if section_name.startswith("#01 MERCEARIA - #") and "ALTO GIRO" in section_name:
+def obter_chave_ordenacao_secao(nome_secao: Any) -> str:
+    if not isinstance(nome_secao, str) or pd.isna(nome_secao): return "SEM SEÇÃO DEFINIDA"
+    if nome_secao.startswith("#01 MERCEARIA - #") and "ALTO GIRO" in nome_secao:
         return "#01 MERCEARIA - ALTO GIRO"
-    return section_name.split(" - ", 1)[0]
+    return nome_secao.split(" - ", 1)[0]
 
 # ------------------------------------------
-# FUNÇÕES PARA INTEGRAÇÃO E MANUTENÇÃO DE DADOS
+# MÓDULO DE GERENCIAMENTO DO CADASTRO DE PRODUTOS
 # ------------------------------------------
-
-def atualizar_cadastro_produtos_base(df_ofertas_xml: pd.DataFrame) -> None:
-    path_cadastro_base = f'./{PRODUCT_MASTER_FILE_NAME}'
-    cols_cadastro_base_ordenadas = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
-
+def carregar_ou_inicializar_dataframe_mestre(caminho_arquivo_mestre: str, colunas_mestre_padrao: List[str]) -> pd.DataFrame:
     try:
-        df_cadastro_base = pd.read_excel(path_cadastro_base)
-        if 'ID' not in df_cadastro_base.columns:
-            print(f"⚠️  Arquivo '{PRODUCT_MASTER_FILE_NAME}' não possui coluna 'ID'. Tratando como novo.")
-            df_cadastro_base = pd.DataFrame(columns=cols_cadastro_base_ordenadas)
-        temp_df = pd.DataFrame(columns=cols_cadastro_base_ordenadas)
-        for col in cols_cadastro_base_ordenadas:
-            if col in df_cadastro_base.columns:
-                temp_df[col] = df_cadastro_base[col]
+        df_mestre = pd.read_excel(caminho_arquivo_mestre)
+        if 'ID' not in df_mestre.columns:
+            print(f"⚠️  Arquivo '{NOME_ARQUIVO_MESTRE_PRODUTOS}' não possui coluna 'ID'. Tratando como novo.")
+            return pd.DataFrame(columns=colunas_mestre_padrao)
+
+        df_temp_mestre = pd.DataFrame(columns=colunas_mestre_padrao)
+        for coluna in colunas_mestre_padrao:
+            if coluna in df_mestre.columns:
+                df_temp_mestre[coluna] = df_mestre[coluna]
             else:
-                temp_df[col] = np.nan
-        df_cadastro_base = temp_df
+                df_temp_mestre[coluna] = np.nan
+        return df_temp_mestre
     except FileNotFoundError:
-        print(f"ℹ️  Arquivo '{PRODUCT_MASTER_FILE_NAME}' não encontrado. Será criado.")
-        df_cadastro_base = pd.DataFrame(columns=cols_cadastro_base_ordenadas)
+        print(f"ℹ️  Arquivo '{NOME_ARQUIVO_MESTRE_PRODUTOS}' não encontrado. Será criado.")
+        return pd.DataFrame(columns=colunas_mestre_padrao)
     except Exception as e:
-        print(f"❌ Erro ao carregar '{PRODUCT_MASTER_FILE_NAME}': {e}. Operação cancelada.")
-        return
+        print(f"❌ Erro ao carregar '{NOME_ARQUIVO_MESTRE_PRODUTOS}': {e}. Operação cancelada para este arquivo.")
+        return pd.DataFrame(columns=colunas_mestre_padrao) # Retorna vazio para evitar mais erros
 
-    novos_produtos_df = pd.DataFrame()
+def identificar_produtos_novos_para_cadastro(df_ofertas: pd.DataFrame, df_mestre_existente: pd.DataFrame) -> pd.DataFrame:
+    if df_ofertas.empty:
+        return pd.DataFrame()
+    if 'ID_Produto_XML' not in df_ofertas.columns or 'Nome_Produto_XML' not in df_ofertas.columns:
+        print(f"❌ Colunas 'ID_Produto_XML' ou 'Nome_Produto_XML' ausentes no DataFrame de ofertas. Não é possível identificar novos produtos.")
+        return pd.DataFrame()
 
-    if df_ofertas_xml.empty:
-        print(f"ℹ️ DataFrame de ofertas XML está vazio. Nenhum produto novo para adicionar ao '{PRODUCT_MASTER_FILE_NAME}'.")
+    ids_existentes_no_mestre = set()
+    if 'ID' in df_mestre_existente.columns and not df_mestre_existente.empty:
+        df_mestre_existente['ID'] = pd.to_numeric(df_mestre_existente['ID'], errors='coerce')
+        ids_existentes_no_mestre = set(df_mestre_existente['ID'].dropna().astype(int).unique())
+
+    df_ofertas_copia = df_ofertas.copy()
+    df_ofertas_copia['ID_Produto_XML'] = pd.to_numeric(df_ofertas_copia['ID_Produto_XML'], errors='coerce')
+
+    df_produtos_novos = df_ofertas_copia[
+        ~df_ofertas_copia['ID_Produto_XML'].dropna().astype(int).isin(ids_existentes_no_mestre)
+    ].copy()
+    return df_produtos_novos
+
+def preparar_novos_produtos_para_dataframe_mestre(df_novos_identificados: pd.DataFrame, colunas_mestre_padrao: List[str]) -> pd.DataFrame:
+    if df_novos_identificados.empty:
+        return pd.DataFrame(columns=colunas_mestre_padrao)
+
+    lista_novos_formatados = []
+    for _, linha in df_novos_identificados.iterrows():
+        lista_novos_formatados.append({
+            'ID': linha['ID_Produto_XML'],
+            'NOME_SISTEMA': linha['Nome_Produto_XML'],
+            'SESSÃO': 'SEÇÃO NÃO ESPECIFICADA',
+            'NOME_CORRIGIDO': linha['Nome_Produto_XML']
+        })
+    return pd.DataFrame(lista_novos_formatados, columns=colunas_mestre_padrao)
+
+def salvar_dataframe_mestre_formatado(df_mestre_final: pd.DataFrame, caminho_arquivo_mestre: str) -> None:
+    try:
+        if 'ID' in df_mestre_final.columns:
+            df_mestre_final['ID'] = pd.to_numeric(df_mestre_final['ID'], errors='coerce')
+        df_mestre_final.to_excel(caminho_arquivo_mestre, index=False)
+    except Exception as e:
+        raise Exception(f"Erro ao salvar DataFrame mestre em '{caminho_arquivo_mestre}': {e}")
+
+
+def aplicar_estilos_visuais_arquivo_mestre(caminho_arquivo_mestre: str, ids_produtos_em_oferta: Set[int], preenchimento_destaque: PatternFill) -> List[Dict[str, Any]]:
+    produtos_coloridos_info = []
+    try:
+        workbook = load_workbook(caminho_arquivo_mestre)
+        planilha = workbook.active
+        sem_preenchimento = PatternFill(fill_type=None)
+
+        id_col_idx, nome_corrigido_col_idx, nome_sistema_col_idx = None, None, None
+        if planilha.max_row > 0:
+            celulas_cabecalho = planilha[1]
+            for i, celula in enumerate(celulas_cabecalho):
+                if celula.value == 'ID': id_col_idx = i + 1
+                elif celula.value == 'NOME_CORRIGIDO': nome_corrigido_col_idx = i + 1
+                elif celula.value == 'NOME_SISTEMA': nome_sistema_col_idx = i + 1
+
+        if id_col_idx is None and planilha.max_row > 0:
+            print(f"⚠️  Aviso: Coluna 'ID' não encontrada no cabeçalho de '{NOME_ARQUIVO_MESTRE_PRODUTOS}'. Não será possível aplicar cores.")
+            workbook.save(caminho_arquivo_mestre)
+            return []
+
+        if planilha.max_row > 1:
+            for num_linha in range(2, planilha.max_row + 1):
+                for num_coluna in range(1, planilha.max_column + 1):
+                    planilha.cell(row=num_linha, column=num_coluna).fill = sem_preenchimento
+
+                valor_celula_id = planilha.cell(row=num_linha, column=id_col_idx).value
+                if valor_celula_id is not None:
+                    try:
+                        id_atual = int(float(valor_celula_id))
+                        if id_atual in ids_produtos_em_oferta:
+                            for num_coluna in range(1, planilha.max_column + 1):
+                                planilha.cell(row=num_linha, column=num_coluna).fill = preenchimento_destaque
+
+                            nome_produto = "NOME NÃO ENCONTRADO"
+                            if nome_corrigido_col_idx and planilha.cell(row=num_linha, column=nome_corrigido_col_idx).value:
+                                nome_produto = planilha.cell(row=num_linha, column=nome_corrigido_col_idx).value
+                            elif nome_sistema_col_idx and planilha.cell(row=num_linha, column=nome_sistema_col_idx).value:
+                                nome_produto = planilha.cell(row=num_linha, column=nome_sistema_col_idx).value
+                            produtos_coloridos_info.append({'ID': id_atual, 'Nome': nome_produto})
+                    except (ValueError, TypeError):
+                        pass
+
+        workbook.save(caminho_arquivo_mestre)
+        return produtos_coloridos_info
+    except Exception as e:
+        print(f"❌ Erro ao aplicar estilos visuais em '{caminho_arquivo_mestre}': {e}")
+        traceback.print_exc()
+        return []
+
+def gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml: pd.DataFrame) -> None:
+    print(f"💾 Atualizando o arquivo de cadastro de produtos: './{NOME_ARQUIVO_MESTRE_PRODUTOS}'...")
+    caminho_mestre = f'./{NOME_ARQUIVO_MESTRE_PRODUTOS}'
+    colunas_mestre_ordenadas = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
+
+    df_mestre_atual = carregar_ou_inicializar_dataframe_mestre(caminho_mestre, colunas_mestre_ordenadas)
+
+    df_novos_produtos_identificados = identificar_produtos_novos_para_cadastro(df_ofertas_consolidadas_xml, df_mestre_atual)
+
+    if not df_novos_produtos_identificados.empty:
+        print(f"ℹ️ {len(df_novos_produtos_identificados)} novos produtos encontrados para adicionar.")
+        df_novos_formatados = preparar_novos_produtos_para_dataframe_mestre(df_novos_produtos_identificados, colunas_mestre_ordenadas)
+        df_mestre_atual = pd.concat([df_mestre_atual, df_novos_formatados], ignore_index=True)
+        df_mestre_atual.drop_duplicates(subset=['ID'], keep='first', inplace=True)
     else:
-        if 'ID_Produto_XML' not in df_ofertas_xml.columns or 'Nome_Produto_XML' not in df_ofertas_xml.columns:
-            print(f"❌ Colunas 'ID_Produto_XML' ou 'Nome_Produto_XML' ausentes no DataFrame de ofertas. Não é possível atualizar o cadastro.")
-        else:
-            if 'ID' in df_cadastro_base.columns:
-                df_cadastro_base['ID'] = pd.to_numeric(df_cadastro_base['ID'], errors='coerce')
-                ids_existentes_cadastro = set(df_cadastro_base['ID'].dropna().astype(int).unique())
-            else:
-                ids_existentes_cadastro = set()
+        if not df_ofertas_consolidadas_xml.empty:
+             print(f"ℹ️ Nenhum produto novo das ofertas XML para adicionar ao '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
 
-            df_ofertas_xml['ID_Produto_XML'] = pd.to_numeric(df_ofertas_xml['ID_Produto_XML'], errors='coerce')
-            novos_produtos_df = df_ofertas_xml[
-                ~df_ofertas_xml['ID_Produto_XML'].dropna().astype(int).isin(ids_existentes_cadastro)
-            ].copy()
-
-            if novos_produtos_df.empty:
-                print(f"ℹ️ Nenhum produto novo das ofertas XML para adicionar ao '{PRODUCT_MASTER_FILE_NAME}'.")
-            else:
-                print(f"ℹ️ {len(novos_produtos_df)} novos produtos encontrados para adicionar.")
-                novos_para_cadastro_list = []
-                for _, row in novos_produtos_df.iterrows():
-                    novos_para_cadastro_list.append({
-                        'ID': row['ID_Produto_XML'],
-                        'NOME_SISTEMA': row['Nome_Produto_XML'],
-                        'SESSÃO': 'SEÇÃO NÃO ESPECIFICADA',
-                        'NOME_CORRIGIDO': row['Nome_Produto_XML']
-                    })
-                df_novos_formatados = pd.DataFrame(novos_para_cadastro_list, columns=cols_cadastro_base_ordenadas)
-                df_cadastro_base = pd.concat([df_cadastro_base, df_novos_formatados], ignore_index=True)
-                df_cadastro_base.drop_duplicates(subset=['ID'], keep='first', inplace=True)
+    df_mestre_para_salvar = df_mestre_atual.reindex(columns=colunas_mestre_ordenadas)
+    df_mestre_para_salvar = df_mestre_para_salvar.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID'])
 
     try:
-        df_para_salvar = df_cadastro_base.reindex(columns=cols_cadastro_base_ordenadas)
-        df_para_salvar = df_para_salvar.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID'])
+        salvar_dataframe_mestre_formatado(df_mestre_para_salvar, caminho_mestre)
 
+        ids_produtos_oferta_set = set()
+        if not df_ofertas_consolidadas_xml.empty and 'ID_Produto_XML' in df_ofertas_consolidadas_xml.columns:
+            ids_produtos_oferta_set = set(df_ofertas_consolidadas_xml['ID_Produto_XML'].dropna().astype(int).unique())
 
-        if 'ID' in df_para_salvar.columns:
-            df_para_salvar['ID'] = pd.to_numeric(df_para_salvar['ID'], errors='coerce')
+        if not df_mestre_para_salvar.empty or os.path.exists(caminho_mestre):
+            produtos_destacados_info = aplicar_estilos_visuais_arquivo_mestre(caminho_mestre, ids_produtos_oferta_set, PREENCHIMENTO_DESTAQUE)
 
-        df_para_salvar.to_excel(path_cadastro_base, index=False)
-
-        if not df_para_salvar.empty or os.path.exists(path_cadastro_base):
-            no_fill = PatternFill(fill_type=None)
-
-            ids_produtos_oferta_xml = set()
-            if not df_ofertas_xml.empty and 'ID_Produto_XML' in df_ofertas_xml.columns:
-                ids_produtos_oferta_xml = set(df_ofertas_xml['ID_Produto_XML'].dropna().astype(int).unique())
-
-            produtos_coloridos_info_list = []
-
-            wb = load_workbook(path_cadastro_base)
-            ws = wb.active
-
-            id_col_index = None
-            nome_corrigido_col_index = None
-            nome_sistema_col_index = None
-
-            if ws.max_row > 0:
-                header_cells = ws[1]
-                for i, cell in enumerate(header_cells):
-                    if cell.value == 'ID': id_col_index = i + 1
-                    elif cell.value == 'NOME_CORRIGIDO': nome_corrigido_col_index = i + 1
-                    elif cell.value == 'NOME_SISTEMA': nome_sistema_col_index = i + 1
-
-            if id_col_index is None and ws.max_row > 0 :
-                print(f"⚠️  Aviso: Coluna 'ID' não encontrada no cabeçalho de '{PRODUCT_MASTER_FILE_NAME}'. Não será possível aplicar cores.")
-            elif ws.max_row <= 1 and not ids_produtos_oferta_xml:
-                 print(f"ℹ️  Arquivo '{PRODUCT_MASTER_FILE_NAME}' está vazio ou contém apenas cabeçalho e não há produtos XML para colorir.")
-            elif ws.max_row > 1 and id_col_index is not None:
-                for row_num in range(2, ws.max_row + 1):
-                    for col_num in range(1, ws.max_column + 1):
-                        ws.cell(row=row_num, column=col_num).fill = no_fill
-
-                    id_cell_value = ws.cell(row=row_num, column=id_col_index).value
-                    if id_cell_value is not None:
-                        try:
-                            current_id = int(float(id_cell_value))
-                            if current_id in ids_produtos_oferta_xml:
-                                for col_num in range(1, ws.max_column + 1):
-                                    ws.cell(row=row_num, column=col_num).fill = HIGHLIGHT_FILL
-
-                                nome_produto = "NOME NÃO ENCONTRADO"
-                                if nome_corrigido_col_index and ws.cell(row=row_num, column=nome_corrigido_col_index).value:
-                                    nome_produto = ws.cell(row=row_num, column=nome_corrigido_col_index).value
-                                elif nome_sistema_col_index and ws.cell(row=row_num, column=nome_sistema_col_index).value:
-                                     nome_produto = ws.cell(row=row_num, column=nome_sistema_col_index).value
-                                produtos_coloridos_info_list.append({'ID': current_id, 'Nome': nome_produto})
-                        except (ValueError, TypeError): pass
-
-            wb.save(path_cadastro_base)
-
-            if not novos_produtos_df.empty:
-                print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' atualizado com {len(novos_produtos_df)} novos produtos e formatação de cores aplicada.")
+            if not df_novos_produtos_identificados.empty:
+                print(f"✅ '{NOME_ARQUIVO_MESTRE_PRODUTOS}' atualizado com {len(df_novos_produtos_identificados)} novos produtos e formatação de cores aplicada.")
             else:
-                print(f"✅ '{PRODUCT_MASTER_FILE_NAME}' salvo com formatação de cores aplicada.")
+                print(f"✅ '{NOME_ARQUIVO_MESTRE_PRODUTOS}' salvo com formatação de cores aplicada.")
 
-            if produtos_coloridos_info_list:
-                print(f"ℹ️ Produtos das ofertas XML (coloridos em verde em '{PRODUCT_MASTER_FILE_NAME}'):")
-                unique_produtos_coloridos = [dict(t) for t in {tuple(d.items()) for d in produtos_coloridos_info_list}]
+            if produtos_destacados_info:
+                print(f"ℹ️ Produtos das ofertas XML (coloridos em verde em '{NOME_ARQUIVO_MESTRE_PRODUTOS}'):")
+                unique_produtos_coloridos = [dict(t) for t in {tuple(d.items()) for d in produtos_destacados_info}]
                 for prod_info in sorted(unique_produtos_coloridos, key=lambda x: x['ID']):
                     print(f"  - ID: {prod_info['ID']}, Nome: {str(prod_info['Nome'])}")
-            elif ids_produtos_oferta_xml:
-                print(f"ℹ️ Havia {len(ids_produtos_oferta_xml)} produtos nas ofertas XML, mas nenhum correspondente foi encontrado ou pode ser colorido em '{PRODUCT_MASTER_FILE_NAME}'.")
+            elif ids_produtos_oferta_set:
+                print(f"ℹ️ Havia {len(ids_produtos_oferta_set)} produtos nas ofertas XML, mas nenhum correspondente foi encontrado ou pode ser colorido em '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
             else:
-                print(f"ℹ️ Nenhum produto das ofertas XML para colorir em '{PRODUCT_MASTER_FILE_NAME}'.")
+                print(f"ℹ️ Nenhum produto das ofertas XML para colorir em '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
 
     except Exception as e:
-        print(f"❌ Erro ao salvar ou formatar '{PRODUCT_MASTER_FILE_NAME}': {e}")
+        print(f"❌ Erro crítico durante o gerenciamento do arquivo mestre: {e}")
         traceback.print_exc()
 
-def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'create') -> None:
-    path_cadastro_base = f'./{PRODUCT_MASTER_FILE_NAME}'
-    path_relatorio_final = f'./{FINAL_OFFERS_REPORT_NAME}'
-    colunas_finais_excel_ordenadas = ['NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO']
-    colunas_com_destaque = colunas_finais_excel_ordenadas + ['DESTAQUE', 'Chave_Grupo_Secao_Ordenacao'] # Adicionar Chave aqui para DataFrame interno
-
+# ------------------------------------------
+# MÓDULO DE GERAÇÃO DO RELATÓRIO FINAL DE OFERTAS
+# ------------------------------------------
+def carregar_dados_mestre_para_relatorio(caminho_arquivo_mestre: str) -> Optional[pd.DataFrame]:
     try:
-        df_cadastro_base = pd.read_excel(path_cadastro_base)
-        colunas_cadastro_esperadas = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
-        if not all(col in df_cadastro_base.columns for col in colunas_cadastro_esperadas):
-            missing_cols = [col for col in colunas_cadastro_esperadas if col not in df_cadastro_base.columns]
-            print(f"❌ Arquivo '{PRODUCT_MASTER_FILE_NAME}' não contém todas as colunas esperadas. Faltando: {missing_cols}. Não é possível gerar relatório.")
-            return
+        df_mestre = pd.read_excel(caminho_arquivo_mestre)
+        colunas_esperadas = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
+        if not all(col in df_mestre.columns for col in colunas_esperadas):
+            colunas_faltantes = [col for col in colunas_esperadas if col not in df_mestre.columns]
+            print(f"❌ Arquivo '{NOME_ARQUIVO_MESTRE_PRODUTOS}' não contém todas as colunas esperadas. Faltando: {colunas_faltantes}. Não é possível gerar relatório.")
+            return None
+        return df_mestre[['ID', 'SESSÃO', 'NOME_CORRIGIDO']].copy()
     except FileNotFoundError:
-        print(f"❌ Arquivo de cadastro '{PRODUCT_MASTER_FILE_NAME}' não encontrado. Execute a atualização do cadastro primeiro."); return
+        print(f"❌ Arquivo de cadastro '{NOME_ARQUIVO_MESTRE_PRODUTOS}' não encontrado. Execute a atualização do cadastro primeiro.")
+        return None
     except Exception as e:
-        print(f"❌ Erro ao carregar '{PRODUCT_MASTER_FILE_NAME}': {e}"); return
+        print(f"❌ Erro ao carregar '{NOME_ARQUIVO_MESTRE_PRODUTOS}' para o relatório: {e}")
+        return None
 
-    if df_ofertas_xml.empty and mode == 'create':
-        print(f"⚠️ DataFrame de ofertas XML está vazio. Nada a processar para '{FINAL_OFFERS_REPORT_NAME}' no modo 'create'."); return
-    elif df_ofertas_xml.empty and mode == 'update':
-        print(f"⚠️ DataFrame de ofertas XML está vazio. Tentando gerar relatório '{FINAL_OFFERS_REPORT_NAME}' para limpar/atualizar com base no anterior.")
+def preparar_dados_ofertas_xml_para_fusao(df_ofertas_xml_bruto: pd.DataFrame) -> pd.DataFrame:
+    colunas_requeridas_xml = ['ID_Produto_XML', 'Promoção_XML', 'Preco_Promocao_XML', 'Nome_Produto_XML']
+    if df_ofertas_xml_bruto.empty:
+        return pd.DataFrame(columns=colunas_requeridas_xml)
+    if not all(col in df_ofertas_xml_bruto.columns for col in colunas_requeridas_xml):
+        print(f"❌ DataFrame de ofertas XML não contém todas as colunas requeridas: {colunas_requeridas_xml}.")
+        return pd.DataFrame(columns=colunas_requeridas_xml) # Retorna vazio se faltar coluna
 
-    required_xml_cols = ['ID_Produto_XML', 'Promoção_XML', 'Preco_Promocao_XML', 'Nome_Produto_XML']
-    if not df_ofertas_xml.empty and not all(col in df_ofertas_xml.columns for col in required_xml_cols):
-        print(f"❌ DataFrame de ofertas XML não contém todas as colunas requeridas: {required_xml_cols}.")
-        return
+    df_copia = df_ofertas_xml_bruto[colunas_requeridas_xml].copy()
+    df_copia['ID_Produto_XML'] = pd.to_numeric(df_copia['ID_Produto_XML'], errors='coerce').astype('Int64')
+    return df_copia
 
-    df_ofertas_xml_copy = df_ofertas_xml[required_xml_cols].copy() if not df_ofertas_xml.empty else pd.DataFrame(columns=required_xml_cols)
-    df_cadastro_base_copy = df_cadastro_base[['ID', 'SESSÃO', 'NOME_CORRIGIDO']].copy()
+def fundir_dados_ofertas_com_mestre(df_ofertas_preparado: pd.DataFrame, df_mestre_dados: pd.DataFrame) -> pd.DataFrame:
+    if df_ofertas_preparado.empty: # Se não há ofertas, não há o que fundir
+        colunas_esperadas_fusao = ['ID', 'NOME_PROMOÇÃO_ORIGINAL', 'PROMOÇÃO', 'Nome_Produto_XML', 'SESSÃO', 'NOME_CORRIGIDO']
+        return pd.DataFrame(columns=colunas_esperadas_fusao)
 
-    df_ofertas_xml_copy['ID_Produto_XML'] = pd.to_numeric(df_ofertas_xml_copy['ID_Produto_XML'], errors='coerce').astype('Int64')
-    df_cadastro_base_copy['ID'] = pd.to_numeric(df_cadastro_base_copy['ID'], errors='coerce').astype('Int64')
+    df_mestre_dados['ID'] = pd.to_numeric(df_mestre_dados['ID'], errors='coerce').astype('Int64')
+    df_fundido = pd.merge(
+        df_ofertas_preparado,
+        df_mestre_dados,
+        left_on='ID_Produto_XML',
+        right_on='ID',
+        how='left'
+    )
+    df_fundido = df_fundido.rename(columns={
+        'Promoção_XML': 'NOME_PROMOÇÃO_ORIGINAL',
+        'Preco_Promocao_XML': 'PROMOÇÃO',
+        'ID_Produto_XML': 'ID_FINAL' # Renomeia para evitar conflito e depois consolida
+    })
 
-    if not df_ofertas_xml_copy.empty:
-        df_merged = pd.merge(
-            df_ofertas_xml_copy,
-            df_cadastro_base_copy,
-            left_on='ID_Produto_XML',
-            right_on='ID',
-            how='left'
+    if 'ID' in df_fundido.columns and 'ID_FINAL' in df_fundido.columns:
+        df_fundido['ID'] = df_fundido['ID'].fillna(df_fundido['ID_FINAL'])
+    elif 'ID_FINAL' in df_fundido.columns: # Caso 'ID' não exista após merge (improvável se df_mestre_dados é usado)
+        df_fundido.rename(columns={'ID_FINAL': 'ID'}, inplace=True)
+
+    # Preenchimento de Nulos
+    df_fundido['NOME_CORRIGIDO'] = df_fundido['NOME_CORRIGIDO'].fillna(df_fundido['Nome_Produto_XML'])
+    df_fundido['SESSÃO'] = df_fundido['SESSÃO'].fillna('SEÇÃO NÃO ESPECIFICADA')
+    df_fundido['NOME_PROMOÇÃO_ORIGINAL'] = df_fundido['NOME_PROMOÇÃO_ORIGINAL'].fillna('')
+    return df_fundido
+
+def enriquecer_dados_fundidos_com_detalhes_produto(df_fundido: pd.DataFrame) -> pd.DataFrame:
+    if df_fundido.empty:
+        return df_fundido.assign(Produto_Base_Agrupamento=pd.Series(dtype=str),
+                                 Tipo_Produto_Variante=pd.Series(dtype=str),
+                                 Excecao_Agrupamento=pd.Series(dtype=bool))
+
+    df_fundido['Produto_Base_Agrupamento'] = df_fundido['NOME_CORRIGIDO'].apply(lambda x: extrair_nome_base_produto(str(x)))
+    df_fundido['Tipo_Produto_Variante'] = df_fundido.apply(lambda row: extrair_tipo_variacao_produto(str(row['NOME_CORRIGIDO']), str(row['Produto_Base_Agrupamento'])), axis=1)
+    df_fundido['Excecao_Agrupamento'] = df_fundido['SESSÃO'].isin(SECOES_EXCECAO_AGRUPAMENTO)
+    return df_fundido
+
+def _formatar_ofertas_para_relatorio(df_ofertas: pd.DataFrame, nome_produto_col: str, tipo_col_valor: Any) -> pd.DataFrame:
+    return pd.DataFrame({
+        'NOME_PROMOÇÃO': df_ofertas['NOME_PROMOÇÃO_ORIGINAL'],
+        'SESSÃO': df_ofertas['SESSÃO'],
+        'ID': df_ofertas['ID'],
+        'PRODUTO': df_ofertas[nome_produto_col],
+        'TIPO': tipo_col_valor if not isinstance(tipo_col_valor, pd.Series) else tipo_col_valor,
+        'PROMOÇÃO': df_ofertas['PROMOÇÃO'],
+        'DESTAQUE': False # Padrão, será atualizado depois se necessário
+    })
+
+def agregar_e_transformar_ofertas_para_relatorio(df_enriquecido: pd.DataFrame) -> pd.DataFrame:
+    if df_enriquecido.empty:
+        return pd.DataFrame(columns=['NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO', 'DESTAQUE'])
+
+    lista_dfs_processados_relatorio = []
+
+    df_excecoes = df_enriquecido[df_enriquecido['Excecao_Agrupamento']].copy()
+    if not df_excecoes.empty:
+        df_formatado_excecoes = _formatar_ofertas_para_relatorio(df_excecoes, 'NOME_CORRIGIDO', "")
+        lista_dfs_processados_relatorio.append(df_formatado_excecoes)
+
+    df_normais = df_enriquecido[~df_enriquecido['Excecao_Agrupamento']].copy()
+    if not df_normais.empty:
+        df_normais['Contagem_No_Grupo'] = df_normais.groupby(
+            ['Produto_Base_Agrupamento', 'PROMOÇÃO']
+        )['ID'].transform('size')
+
+        df_para_agregar_tipos = df_normais[df_normais['Contagem_No_Grupo'] > 1].copy()
+        if not df_para_agregar_tipos.empty:
+            def agregar_tipos_validos(series_tipos):
+                tipos_validos = [str(t).strip() for t in series_tipos if pd.notna(t) and str(t).strip()]
+                return ', '.join(sorted(list(set(tipos_validos)))) if tipos_validos else ""
+
+            df_agregado_com_tipos = df_para_agregar_tipos.groupby(
+                ['Produto_Base_Agrupamento', 'PROMOÇÃO'], as_index=False
+            ).agg(
+                TIPO_AGREGADO=pd.NamedAgg(column='Tipo_Produto_Variante', aggfunc=agregar_tipos_validos),
+                NOME_PROMOÇÃO_ORIGINAL=pd.NamedAgg(column='NOME_PROMOÇÃO_ORIGINAL', aggfunc='first'),
+                ID=pd.NamedAgg(column='ID', aggfunc='first'), # Pega o primeiro ID do grupo
+                SESSÃO=pd.NamedAgg(column='SESSÃO', aggfunc='first')
+            ).rename(columns={'Produto_Base_Agrupamento': 'PRODUTO', 'TIPO_AGREGADO': 'TIPO'})
+
+            df_agregado_com_tipos['DESTAQUE'] = False
+            lista_dfs_processados_relatorio.append(df_agregado_com_tipos[['NOME_PROMOÇÃO_ORIGINAL', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO', 'DESTAQUE']].rename(columns={'NOME_PROMOÇÃO_ORIGINAL':'NOME_PROMOÇÃO'}))
+
+
+        df_unicos_no_grupo = df_normais[df_normais['Contagem_No_Grupo'] == 1].copy()
+        if not df_unicos_no_grupo.empty:
+            df_formatado_unicos = _formatar_ofertas_para_relatorio(df_unicos_no_grupo, 'NOME_CORRIGIDO', "")
+            lista_dfs_processados_relatorio.append(df_formatado_unicos)
+
+    if not lista_dfs_processados_relatorio:
+        return pd.DataFrame(columns=['NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO', 'DESTAQUE'])
+
+    df_relatorio_bruto_concatenado = pd.concat(lista_dfs_processados_relatorio, ignore_index=True)
+    return df_relatorio_bruto_concatenado
+
+def carregar_dados_relatorio_anterior_para_comparacao(caminho_relatorio_final: str) -> Tuple[Optional[pd.DataFrame], Set[str], Dict[str, float]]:
+    try:
+        df_antigo = pd.read_excel(
+            caminho_relatorio_final,
+            sheet_name='Ofertas Finais',
+            dtype={'PRODUTO': str, 'TIPO': str, 'SESSÃO': str, 'NOME_PROMOÇÃO': str, 'ID': 'Int64'}
         )
+        df_antigo['PRODUTO'] = df_antigo['PRODUTO'].fillna('')
+        df_antigo['TIPO'] = df_antigo['TIPO'].fillna('')
+        df_antigo['PROMOÇÃO'] = pd.to_numeric(df_antigo['PROMOÇÃO'], errors='coerce')
 
-        df_merged = df_merged.rename(columns={
-            'Promoção_XML': 'NOME_PROMOÇÃO_ORIGINAL',
-            'Preco_Promocao_XML': 'PROMOÇÃO',
-            'ID_Produto_XML': 'ID_FINAL'
-        })
-        if 'ID' in df_merged.columns and 'ID_FINAL' in df_merged.columns:
-            df_merged['ID'] = df_merged['ID'].fillna(df_merged['ID_FINAL'])
-        elif 'ID_FINAL' in df_merged.columns :
-            df_merged.rename(columns={'ID_FINAL': 'ID'}, inplace=True)
-
-        df_merged['NOME_CORRIGIDO'] = df_merged['NOME_CORRIGIDO'].fillna(df_merged['Nome_Produto_XML'])
-        df_merged['SESSÃO'] = df_merged['SESSÃO'].fillna('SEÇÃO NÃO ESPECIFICADA')
-        df_merged['NOME_PROMOÇÃO_ORIGINAL'] = df_merged['NOME_PROMOÇÃO_ORIGINAL'].fillna('')
-
-        df_merged['Produto_Base_Agrupamento'] = df_merged['NOME_CORRIGIDO'].apply(lambda x: extract_product_base_name(str(x)))
-        df_merged['Tipo_Produto_Variante'] = df_merged.apply(lambda row: extract_product_type_from_full_name(str(row['NOME_CORRIGIDO']), str(row['Produto_Base_Agrupamento'])), axis=1)
-        df_merged['Excecao_Agrupamento'] = df_merged['SESSÃO'].isin(SECOES_EXCECAO_AGRUPAMENTO)
-    else:
-        expected_merged_cols = ['ID', 'NOME_PROMOÇÃO_ORIGINAL', 'PROMOÇÃO', 'Nome_Produto_XML',
-                                'SESSÃO', 'NOME_CORRIGIDO', 'Produto_Base_Agrupamento',
-                                'Tipo_Produto_Variante', 'Excecao_Agrupamento']
-        df_merged = pd.DataFrame(columns=expected_merged_cols)
-
-    lista_dfs_processados = []
-
-    if not df_merged.empty:
-        df_excecoes_diretas = df_merged[df_merged['Excecao_Agrupamento']].copy()
-        if not df_excecoes_diretas.empty:
-            df_temp_data = {
-                'NOME_PROMOÇÃO': df_excecoes_diretas['NOME_PROMOÇÃO_ORIGINAL'],
-                'SESSÃO': df_excecoes_diretas['SESSÃO'],
-                'ID': df_excecoes_diretas['ID'],
-                'PRODUTO': df_excecoes_diretas['NOME_CORRIGIDO'],
-                'TIPO': "",
-                'PROMOÇÃO': df_excecoes_diretas['PROMOÇÃO'],
-                'DESTAQUE': False
-                # Chave_Grupo_Secao_Ordenacao será adicionada depois globalmente a df_relatorio_parcial
-            }
-            df_temp = pd.DataFrame(df_temp_data)
-            lista_dfs_processados.append(df_temp) # Não reindexar aqui para não perder colunas que podem não estar em colunas_com_destaque ainda
-
-        df_potenciais = df_merged[~df_merged['Excecao_Agrupamento']].copy()
-        if not df_potenciais.empty:
-            df_potenciais['Contagem_No_Grupo'] = df_potenciais.groupby(
-                ['Produto_Base_Agrupamento', 'PROMOÇÃO']
-            )['ID'].transform('size')
-
-            df_para_agregar = df_potenciais[df_potenciais['Contagem_No_Grupo'] > 1].copy()
-            if not df_para_agregar.empty:
-                def aggregate_types(series_types):
-                    valid_types = [str(t).strip() for t in series_types if pd.notna(t) and str(t).strip()]
-                    return ', '.join(sorted(list(set(valid_types)))) if valid_types else ""
-
-                df_agregado = df_para_agregar.groupby(
-                    ['Produto_Base_Agrupamento', 'PROMOÇÃO'], as_index=False
-                ).agg(
-                    TIPO=pd.NamedAgg(column='Tipo_Produto_Variante', aggfunc=aggregate_types),
-                    NOME_PROMOÇÃO=pd.NamedAgg(column='NOME_PROMOÇÃO_ORIGINAL', aggfunc='first'),
-                    ID=pd.NamedAgg(column='ID', aggfunc='first'),
-                    SESSÃO=pd.NamedAgg(column='SESSÃO', aggfunc='first')
-                ).rename(columns={'Produto_Base_Agrupamento': 'PRODUTO'})
-
-                df_agregado['DESTAQUE'] = False
-                lista_dfs_processados.append(df_agregado)
-
-            df_unicos_em_grupo = df_potenciais[df_potenciais['Contagem_No_Grupo'] == 1].copy()
-            if not df_unicos_em_grupo.empty:
-                df_temp_data = {
-                    'NOME_PROMOÇÃO': df_unicos_em_grupo['NOME_PROMOÇÃO_ORIGINAL'],
-                    'SESSÃO': df_unicos_em_grupo['SESSÃO'],
-                    'ID': df_unicos_em_grupo['ID'],
-                    'PRODUTO': df_unicos_em_grupo['NOME_CORRIGIDO'],
-                    'TIPO': "",
-                    'PROMOÇÃO': df_unicos_em_grupo['PROMOÇÃO'],
-                    'DESTAQUE': False
-                }
-                df_temp = pd.DataFrame(df_temp_data)
-                lista_dfs_processados.append(df_temp)
-
-    if lista_dfs_processados:
-        df_relatorio_parcial = pd.concat(lista_dfs_processados, ignore_index=True)
-    else:
-        # Criar com as colunas esperadas para o processamento, incluindo as auxiliares se necessário
-        df_relatorio_parcial = pd.DataFrame(columns=[c for c in colunas_com_destaque if c != 'Chave_Grupo_Secao_Ordenacao'])
-
-
-    # Garantir colunas essenciais e a coluna DESTAQUE
-    for col in colunas_finais_excel_ordenadas: # Garante colunas que vão para o Excel
-        if col not in df_relatorio_parcial.columns:
-            df_relatorio_parcial[col] = np.nan if col in ['ID', 'PROMOÇÃO'] else ""
-
-    if 'DESTAQUE' not in df_relatorio_parcial.columns:
-        df_relatorio_parcial['DESTAQUE'] = False
-    df_relatorio_parcial['DESTAQUE'] = df_relatorio_parcial['DESTAQUE'].fillna(False).astype(bool)
-
-
-    df_antigo_relatorio = None
-    chaves_antigas_presentes = set()
-    mapa_precos_antigos = {}
-    if mode == 'update':
-        try:
-            df_antigo_relatorio = pd.read_excel(
-                path_relatorio_final,
-                sheet_name='Ofertas Finais',
-                dtype={'PRODUTO': str, 'TIPO': str, 'SESSÃO': str, 'NOME_PROMOÇÃO': str, 'ID': 'Int64'}
-            )
-            df_antigo_relatorio['PRODUTO'] = df_antigo_relatorio['PRODUTO'].fillna('')
-            df_antigo_relatorio['TIPO'] = df_antigo_relatorio['TIPO'].fillna('')
-            df_antigo_relatorio['PROMOÇÃO'] = pd.to_numeric(df_antigo_relatorio['PROMOÇÃO'], errors='coerce')
-
-            if 'ID' in df_antigo_relatorio.columns and df_antigo_relatorio['ID'].notna().any():
-                 df_antigo_relatorio['CHAVE_COMP'] = df_antigo_relatorio['ID'].astype(str)
-            else:
-                 df_antigo_relatorio['CHAVE_COMP'] = df_antigo_relatorio['PRODUTO'].astype(str) + "||" + df_antigo_relatorio['TIPO'].astype(str)
-
-            mapa_precos_antigos = pd.Series(df_antigo_relatorio['PROMOÇÃO'].values, index=df_antigo_relatorio['CHAVE_COMP']).to_dict()
-            chaves_antigas_presentes = set(mapa_precos_antigos.keys())
-
-        except FileNotFoundError:
-            print(f"ℹ️  Relatório anterior '{FINAL_OFFERS_REPORT_NAME}' não encontrado. Todas as ofertas atuais serão consideradas novas para destaque.")
-        except Exception as e:
-            print(f"❌ Erro ao ler relatório anterior '{FINAL_OFFERS_REPORT_NAME}': {e}. Criando novo sem destaques de atualização.")
-
-    if mode == 'update' and not df_relatorio_parcial.empty:
-        if 'ID' in df_relatorio_parcial.columns and df_relatorio_parcial['ID'].notna().any():
-            df_relatorio_parcial['CHAVE_COMP'] = df_relatorio_parcial['ID'].astype(str)
+        if 'ID' in df_antigo.columns and df_antigo['ID'].notna().any():
+            df_antigo['CHAVE_COMP'] = df_antigo['ID'].astype(str)
         else:
-            df_relatorio_parcial['CHAVE_COMP'] = df_relatorio_parcial['PRODUTO'].astype(str) + "||" + df_relatorio_parcial['TIPO'].astype(str)
+            df_antigo['CHAVE_COMP'] = df_antigo['PRODUTO'].astype(str) + "||" + df_antigo['TIPO'].astype(str)
 
-        for index, row_atual in df_relatorio_parcial.iterrows():
-            chave_atual = row_atual['CHAVE_COMP']
-            preco_atual = row_atual['PROMOÇÃO']
-            destacar_linha = False
-            if chave_atual not in chaves_antigas_presentes:
-                destacar_linha = True
-            else:
-                preco_antigo = mapa_precos_antigos.get(chave_atual)
-                if pd.isna(preco_atual) != pd.isna(preco_antigo):
-                    destacar_linha = True
-                elif not pd.isna(preco_atual) and not pd.isna(preco_antigo) and not np.isclose(preco_atual, preco_antigo, equal_nan=False):
-                    destacar_linha = True
+        mapa_precos = pd.Series(df_antigo['PROMOÇÃO'].values, index=df_antigo['CHAVE_COMP']).to_dict()
+        chaves_presentes = set(mapa_precos.keys())
+        return df_antigo, chaves_presentes, mapa_precos
+    except FileNotFoundError:
+        print(f"ℹ️  Relatório anterior '{NOME_RELATORIO_FINAL_OFERTAS}' não encontrado. Todas as ofertas atuais serão consideradas novas.")
+        return None, set(), {}
+    except Exception as e:
+        print(f"❌ Erro ao ler relatório anterior '{NOME_RELATORIO_FINAL_OFERTAS}': {e}. Criando novo sem destaques de atualização.")
+        return None, set(), {}
 
-            if destacar_linha:
-                df_relatorio_parcial.loc[index, 'DESTAQUE'] = True
+def definir_destaque_para_ofertas_alteradas_ou_novas(df_relatorio_atual: pd.DataFrame, chaves_antigas_relatorio: Set[str], mapa_precos_antigos_relatorio: Dict[str, float]) -> pd.DataFrame:
+    if df_relatorio_atual.empty:
+        return df_relatorio_atual
 
-        df_relatorio_parcial = df_relatorio_parcial.drop(columns=['CHAVE_COMP'], errors='ignore')
-
-    for col in ['NOME_PROMOÇÃO', 'SESSÃO', 'PRODUTO', 'TIPO']:
-        if col in df_relatorio_parcial.columns:
-            df_relatorio_parcial[col] = df_relatorio_parcial[col].fillna("")
-    for col in ['ID', 'PROMOÇÃO']: # Já garantido acima, mas redundância não prejudica
-        if col not in df_relatorio_parcial.columns:
-            df_relatorio_parcial[col] = np.nan
-        else: # Certificar que IDs possam ser NaN onde não existem
-            if col == 'ID':
-                df_relatorio_parcial[col] = pd.to_numeric(df_relatorio_parcial[col], errors='coerce').astype('Int64')
-
-
-    # --- INÍCIO DA MODIFICAÇÃO PARA ORDENAÇÃO E ESPAÇAMENTO (COM ESPAÇO ENTRE SEÇÕES TAMBÉM) ---
-    if 'SESSÃO' in df_relatorio_parcial.columns:
-        df_relatorio_parcial['Chave_Grupo_Secao_Ordenacao'] = df_relatorio_parcial['SESSÃO'].apply(get_section_sort_key)
+    df_com_destaque = df_relatorio_atual.copy()
+    if 'ID' in df_com_destaque.columns and df_com_destaque['ID'].notna().any():
+         df_com_destaque['CHAVE_COMP_ATUAL'] = df_com_destaque['ID'].astype(str)
     else:
-        df_relatorio_parcial['Chave_Grupo_Secao_Ordenacao'] = np.nan
+         df_com_destaque['CHAVE_COMP_ATUAL'] = df_com_destaque['PRODUTO'].astype(str) + "||" + df_com_destaque['TIPO'].astype(str)
 
-    df_ordenado = df_relatorio_parcial.sort_values(
+    for indice, linha_atual in df_com_destaque.iterrows():
+        chave_corrente = linha_atual['CHAVE_COMP_ATUAL']
+        preco_corrente = linha_atual['PROMOÇÃO']
+        marcar_como_destaque = False
+
+        if chave_corrente not in chaves_antigas_relatorio:
+            marcar_como_destaque = True
+        else:
+            preco_anterior = mapa_precos_antigos_relatorio.get(chave_corrente)
+            if pd.isna(preco_corrente) != pd.isna(preco_anterior): # Mudança de ter preço para não ter, ou vice-versa
+                marcar_como_destaque = True
+            elif not pd.isna(preco_corrente) and not pd.isna(preco_anterior) and not np.isclose(preco_corrente, preco_anterior, equal_nan=False):
+                marcar_como_destaque = True
+
+        if marcar_como_destaque:
+            df_com_destaque.loc[indice, 'DESTAQUE'] = True
+
+    return df_com_destaque.drop(columns=['CHAVE_COMP_ATUAL'], errors='ignore')
+
+def ordenar_dados_relatorio_e_adicionar_espacamento(df_relatorio_base: pd.DataFrame) -> pd.DataFrame:
+    if df_relatorio_base.empty:
+        return df_relatorio_base
+
+    df_copia_ordenacao = df_relatorio_base.copy()
+    colunas_texto_para_fillna = ['NOME_PROMOÇÃO', 'SESSÃO', 'PRODUTO', 'TIPO']
+    for col in colunas_texto_para_fillna:
+        if col in df_copia_ordenacao.columns:
+            df_copia_ordenacao[col] = df_copia_ordenacao[col].fillna("")
+
+    if 'ID' in df_copia_ordenacao.columns:
+         df_copia_ordenacao['ID'] = pd.to_numeric(df_copia_ordenacao['ID'], errors='coerce').astype('Int64')
+
+
+    if 'SESSÃO' in df_copia_ordenacao.columns:
+        df_copia_ordenacao['Chave_Grupo_Secao_Ordenacao'] = df_copia_ordenacao['SESSÃO'].apply(obter_chave_ordenacao_secao)
+    else:
+        df_copia_ordenacao['Chave_Grupo_Secao_Ordenacao'] = np.nan
+
+    df_ordenado_final = df_copia_ordenacao.sort_values(
         by=['NOME_PROMOÇÃO', 'Chave_Grupo_Secao_Ordenacao', 'SESSÃO', 'PRODUTO'],
         ascending=[True, True, True, True]
     ).reset_index(drop=True)
 
-    lista_linhas_com_espacos = []
-    ultimo_nome_promocao_visto = None
-    ultima_chave_grupo_secao_vista = None
-    # colunas_df_ordenado_com_destaque agora inclui 'Chave_Grupo_Secao_Ordenacao'
-    colunas_df_ordenado_com_destaque = df_ordenado.columns.tolist()
+    lista_linhas_com_espacos_df = []
+    ultimo_nome_promocao = None
+    ultima_chave_grupo_secao = None
+    colunas_df_ordenado_com_extras = df_ordenado_final.columns.tolist()
 
-    if not df_ordenado.empty:
-        for _, row_data in df_ordenado.iterrows():
-            nome_promocao_atual = row_data['NOME_PROMOÇÃO']
-            chave_grupo_secao_atual = row_data['Chave_Grupo_Secao_Ordenacao']
+    if not df_ordenado_final.empty:
+        for _, linha_dados in df_ordenado_final.iterrows():
+            nome_promocao_atual_linha = linha_dados['NOME_PROMOÇÃO']
+            chave_grupo_secao_atual_linha = linha_dados['Chave_Grupo_Secao_Ordenacao']
 
-            adicionar_espaco = False
-            if ultimo_nome_promocao_visto is not None:
-                if nome_promocao_atual != ultimo_nome_promocao_visto:
-                    adicionar_espaco = True
-                elif chave_grupo_secao_atual != ultima_chave_grupo_secao_vista:
-                    adicionar_espaco = True
+            inserir_espaco_antes = False
+            if ultimo_nome_promocao is not None: # Não insere espaço antes da primeira linha
+                if nome_promocao_atual_linha != ultimo_nome_promocao:
+                    inserir_espaco_antes = True
+                elif chave_grupo_secao_atual_linha != ultima_chave_grupo_secao:
+                    inserir_espaco_antes = True
 
-            if adicionar_espaco:
-                spacer_row_data = {col: np.nan for col in colunas_df_ordenado_com_destaque}
-                if 'DESTAQUE' in spacer_row_data:
-                    spacer_row_data['DESTAQUE'] = False
-                lista_linhas_com_espacos.append(spacer_row_data)
+            if inserir_espaco_antes:
+                linha_espacadora_dict = {col: np.nan for col in colunas_df_ordenado_com_extras}
+                if 'DESTAQUE' in linha_espacadora_dict: # Garante que espaçadores não sejam destacados
+                    linha_espacadora_dict['DESTAQUE'] = False
+                lista_linhas_com_espacos_df.append(linha_espacadora_dict)
 
-            lista_linhas_com_espacos.append(row_data.to_dict())
+            lista_linhas_com_espacos_df.append(linha_dados.to_dict())
+            ultimo_nome_promocao = nome_promocao_atual_linha
+            ultima_chave_grupo_secao = chave_grupo_secao_atual_linha
 
-            ultimo_nome_promocao_visto = nome_promocao_atual
-            ultima_chave_grupo_secao_vista = chave_grupo_secao_atual
-    # --- FIM DA MODIFICAÇÃO PARA ORDENAÇÃO E ESPAÇAMENTO ---
+    if not lista_linhas_com_espacos_df: # Se o df_ordenado_final estava vazio
+        return df_ordenado_final # Retorna o DataFrame original (vazio ou não)
 
-    if not lista_linhas_com_espacos:
-        print(f"⚠️ Nenhum dado para gerar o relatório '{FINAL_OFFERS_REPORT_NAME}'.");
-        if mode == 'update' and os.path.exists(path_relatorio_final):
-            try:
-                pd.DataFrame(columns=colunas_finais_excel_ordenadas).to_excel(path_relatorio_final, index=False, sheet_name='Ofertas Finais')
-                print(f"ℹ️ Relatório anterior '{FINAL_OFFERS_REPORT_NAME}' substituído por um arquivo vazio (sem ofertas atuais).")
-            except Exception as e_save_empty:
-                print(f"❌ Erro ao tentar salvar relatório vazio: {e_save_empty}")
-        return
+    df_com_espacamento = pd.DataFrame(lista_linhas_com_espacos_df)
+    return df_com_espacamento.drop(columns=['Chave_Grupo_Secao_Ordenacao'], errors='ignore')
 
-    df_output_excel = pd.DataFrame(lista_linhas_com_espacos)
-    df_output_excel = df_output_excel.drop(columns=['Chave_Grupo_Secao_Ordenacao'], errors='ignore')
+def _estilizar_cabecalho_planilha(planilha_ws, colunas_excel_relatorio: List[str], config_formatacao_geral: Dict, borda_padrao_celula: Border):
+    linha_cabecalho_num = 1
+    config_padrao = config_formatacao_geral.get('_DEFAULT_', {})
+    for idx_coluna_base_zero, nome_coluna in enumerate(colunas_excel_relatorio):
+        celula = planilha_ws.cell(row=linha_cabecalho_num, column=idx_coluna_base_zero + 1)
+        config_col_especifica = config_formatacao_geral.get(nome_coluna, {})
+
+        nome_fonte = config_col_especifica.get('header_font_name', config_padrao.get('header_font_name', 'Calibri'))
+        tamanho_fonte = config_col_especifica.get('header_font_size', config_padrao.get('header_font_size', 9))
+        cor_fonte_hex = config_col_especifica.get('header_font_color', config_padrao.get('header_font_color', "000000")).replace("#","")
+        negrito_fonte = config_col_especifica.get('header_font_bold', config_padrao.get('header_font_bold', True))
+        italico_fonte = config_col_especifica.get('header_font_italic', config_padrao.get('header_font_italic', False))
+        cor_fundo_hex = config_col_especifica.get('header_fill_color', config_padrao.get('header_fill_color', None))
+        if cor_fundo_hex: cor_fundo_hex = cor_fundo_hex.replace("#","")
+        align_h = config_col_especifica.get('header_alignment_horizontal', config_padrao.get('header_alignment_horizontal', 'left'))
+        align_v = config_col_especifica.get('header_alignment_vertical', config_padrao.get('header_alignment_vertical', 'center'))
+
+        celula.font = Font(name=nome_fonte, size=tamanho_fonte, color=cor_fonte_hex, bold=negrito_fonte, italic=italico_fonte)
+        if cor_fundo_hex:
+            celula.fill = PatternFill(start_color=cor_fundo_hex, end_color=cor_fundo_hex, fill_type="solid")
+        celula.alignment = Alignment(horizontal=align_h, vertical=align_v, wrap_text=False)
+        celula.border = borda_padrao_celula
+
+def _estilizar_linhas_de_dados_planilha(planilha_ws, df_completo_com_destaque_info: pd.DataFrame, colunas_excel_relatorio: List[str], config_formatacao_geral: Dict, borda_padrao_celula: Border, preenchimento_linha_destacada: PatternFill, fonte_linha_destacada: Font):
+    config_padrao = config_formatacao_geral.get('_DEFAULT_', {})
+    for idx_linha_df, (_, linha_df_com_destaque) in enumerate(df_completo_com_destaque_info.iterrows()):
+        num_linha_excel = idx_linha_df + 2
+
+        eh_linha_espacadora = all(pd.isna(val) for col, val in linha_df_com_destaque.items() if col not in ['DESTAQUE', 'Chave_Grupo_Secao_Ordenacao']) # 'Chave_Grupo_Secao_Ordenacao' já foi dropada
+        if eh_linha_espacadora:
+            continue
+
+        destacar_esta_linha = linha_df_com_destaque.get('DESTAQUE', False) == True
+
+        for idx_coluna_base_zero, nome_coluna_excel in enumerate(colunas_excel_relatorio):
+            celula = planilha_ws.cell(row=num_linha_excel, column=idx_coluna_base_zero + 1)
+            config_col_especifica = config_formatacao_geral.get(nome_coluna_excel, {})
+
+            nome_fonte_base = config_col_especifica.get('font_name', config_padrao.get('font_name', 'Calibri'))
+            tamanho_fonte_base = config_col_especifica.get('font_size', config_padrao.get('font_size', 10))
+            cor_fonte_base_hex = config_col_especifica.get('font_color', config_padrao.get('font_color', "000000")).replace("#","")
+            negrito_fonte_base = config_col_especifica.get('font_bold', config_padrao.get('font_bold', False))
+            italico_fonte_base = config_col_especifica.get('font_italic', config_padrao.get('font_italic', False))
+            cor_fundo_base_hex = config_col_especifica.get('fill_color', config_padrao.get('fill_color', None))
+            if cor_fundo_base_hex: cor_fundo_base_hex = cor_fundo_base_hex.replace("#","")
+
+            formato_numero = config_col_especifica.get('number_format', config_padrao.get('number_format', '@'))
+            align_h = config_col_especifica.get('alignment_horizontal', config_padrao.get('alignment_horizontal', 'left'))
+            align_v = config_col_especifica.get('alignment_vertical', config_padrao.get('alignment_vertical', 'center'))
+
+            fonte_final_celula = Font(name=nome_fonte_base, size=tamanho_fonte_base, color=cor_fonte_base_hex, bold=negrito_fonte_base, italic=italico_fonte_base)
+            preenchimento_final_celula = PatternFill(fill_type=None)
+            if cor_fundo_base_hex:
+                preenchimento_final_celula = PatternFill(start_color=cor_fundo_base_hex, end_color=cor_fundo_base_hex, fill_type="solid")
+
+            if destacar_esta_linha:
+                preenchimento_final_celula = preenchimento_linha_destacada
+                fonte_final_celula = Font(
+                    name=fonte_linha_destacada.name if fonte_linha_destacada.name else nome_fonte_base,
+                    size=fonte_linha_destacada.size if fonte_linha_destacada.size else tamanho_fonte_base,
+                    color=fonte_linha_destacada.color.rgb if fonte_linha_destacada.color else cor_fonte_base_hex,
+                    bold=fonte_linha_destacada.bold if fonte_linha_destacada.bold is not None else negrito_fonte_base,
+                    italic=fonte_linha_destacada.italic if fonte_linha_destacada.italic is not None else italico_fonte_base
+                )
+
+            celula.font = fonte_final_celula
+            celula.fill = preenchimento_final_celula
+            celula.alignment = Alignment(horizontal=align_h, vertical=align_v, wrap_text=False)
+            celula.border = borda_padrao_celula
+
+            if celula.value is not None:
+                if formato_numero not in ['@', 'General'] and isinstance(celula.value, str):
+                    try: celula.value = float(str(celula.value).replace("R$", "").replace(".", "").replace(",", ".").strip())
+                    except ValueError: pass
+
+                if formato_numero == 'R$ #,##0.00' and isinstance(celula.value, (int, float)) and celula.value == 0:
+                    celula.value = 0.00 # Força 0.00 para valores zero com formato monetário
+                celula.number_format = formato_numero
+
+def _ajustar_largura_das_colunas_planilha(planilha_ws, colunas_excel_relatorio: List[str], config_formatacao_geral: Dict):
+    config_padrao = config_formatacao_geral.get('_DEFAULT_', {})
+    for idx_coluna_base_zero, nome_coluna_excel in enumerate(colunas_excel_relatorio):
+        letra_coluna = get_column_letter(idx_coluna_base_zero + 1)
+        comprimento_maximo_conteudo = 0
+
+        config_col_especifica = config_formatacao_geral.get(nome_coluna_excel, {})
+        formato_numero_atual = config_col_especifica.get('number_format', config_padrao.get('number_format', '@'))
+
+        for num_linha_ws in range(1, planilha_ws.max_row + 1):
+            celula = planilha_ws.cell(row=num_linha_ws, column=idx_coluna_base_zero + 1)
+            if celula.value is not None:
+                valor_texto_celula = str(celula.value)
+                if isinstance(celula.value, (int, float)) and formato_numero_atual == 'R$ #,##0.00':
+                    valor_texto_celula = f"R$ {celula.value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                elif isinstance(celula.value, (int,float)) and formato_numero_atual == '0':
+                     valor_texto_celula = f"{celula.value:.0f}"
+
+                comprimento_atual_conteudo = len(valor_texto_celula)
+                comprimento_maximo_conteudo = max(comprimento_maximo_conteudo, comprimento_atual_conteudo)
+
+        valor_cabecalho_celula = planilha_ws.cell(row=1, column=idx_coluna_base_zero + 1).value
+        if valor_cabecalho_celula:
+            comprimento_maximo_conteudo = max(comprimento_maximo_conteudo, len(str(valor_cabecalho_celula)))
+
+        largura_ajustada = min(comprimento_maximo_conteudo + 4, 60) # Adiciona padding, limita a 60
+        planilha_ws.column_dimensions[letra_coluna].width = largura_ajustada if largura_ajustada > 8 else 10 # Largura mínima
 
 
+def escrever_e_estilizar_planilha_relatorio_final(df_dados_para_planilha: pd.DataFrame, df_com_info_destaque_completa: pd.DataFrame, caminho_relatorio_final: str, colunas_finais_para_excel: List[str], config_formatacao: Dict, preenchimento_destaque_excel: PatternFill, fonte_destaque_excel: Font) -> None:
     try:
-        with pd.ExcelWriter(path_relatorio_final, engine='openpyxl') as writer:
-            # df_para_salvar_excel deve conter apenas as colunas finais para o Excel
-            df_para_salvar_excel = df_output_excel[colunas_finais_excel_ordenadas].copy() # Seleciona e copia
-            # Certificar que 'DESTAQUE' não está em df_para_salvar_excel (já não deveria estar por colunas_finais_excel_ordenadas)
-            # df_para_salvar_excel = df_output_excel.drop(columns=['DESTAQUE'], errors='ignore') # Redundante se usando colunas_finais_excel_ordenadas
+        with pd.ExcelWriter(caminho_relatorio_final, engine='openpyxl') as excel_writer:
+            df_para_salvar_na_planilha = df_dados_para_planilha[colunas_finais_para_excel].copy()
+            df_para_salvar_na_planilha.to_excel(excel_writer, index=False, sheet_name='Ofertas Finais')
+            planilha_ativa_ws = excel_writer.sheets['Ofertas Finais']
 
-            df_para_salvar_excel.to_excel(writer, index=False, sheet_name='Ofertas Finais')
-            ws = writer.sheets['Ofertas Finais']
+            planilha_ativa_ws.sheet_view.showGridLines = False
+            borda_fina_lateral = Side(style='thin')
+            estilo_borda_completa = Border(left=borda_fina_lateral, right=borda_fina_lateral, top=borda_fina_lateral, bottom=borda_fina_lateral)
 
-            ws.sheet_view.showGridLines = False
-            thin_side = Side(style='thin')
-            border_style = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+            _estilizar_cabecalho_planilha(planilha_ativa_ws, colunas_finais_para_excel, config_formatacao, estilo_borda_completa)
+            _estilizar_linhas_de_dados_planilha(planilha_ativa_ws, df_com_info_destaque_completa, colunas_finais_para_excel, config_formatacao, estilo_borda_completa, preenchimento_destaque_excel, fonte_destaque_excel)
+            _ajustar_largura_das_colunas_planilha(planilha_ativa_ws, colunas_finais_para_excel, config_formatacao)
 
-            col_names_in_excel = df_para_salvar_excel.columns.tolist()
+        num_ofertas_reais_no_df_com_destaque = len(df_com_info_destaque_completa.dropna(subset=['PRODUTO'], how='all')) # Contar antes dos espaçadores
+        num_ofertas_reais_no_relatorio = 0
+        if 'PRODUTO' in df_dados_para_planilha.columns: # df_dados_para_planilha é o que foi efetivamente salvo, com espaçadores
+            num_ofertas_reais_no_relatorio = df_dados_para_planilha['PRODUTO'].notna().sum()
 
-            header_row_excel = 1
-            default_format_config = COLUMNS_FORMATTING_CONFIG.get('_DEFAULT_', {})
-            for col_idx_0based, col_name_excel in enumerate(col_names_in_excel):
-                cell = ws.cell(row=header_row_excel, column=col_idx_0based + 1)
-                col_config = COLUMNS_FORMATTING_CONFIG.get(col_name_excel, {})
 
-                font_name = col_config.get('header_font_name', default_format_config.get('header_font_name', 'Calibri'))
-                font_size = col_config.get('header_font_size', default_format_config.get('header_font_size', 9))
-                font_color_hex = col_config.get('header_font_color', default_format_config.get('header_font_color', "000000")).replace("#","")
-                font_bold = col_config.get('header_font_bold', default_format_config.get('header_font_bold', True))
-                font_italic = col_config.get('header_font_italic', default_format_config.get('header_font_italic', False))
-                fill_color_hex = col_config.get('header_fill_color', default_format_config.get('header_fill_color', None))
-                if fill_color_hex: fill_color_hex = fill_color_hex.replace("#","")
-                align_h = col_config.get('header_alignment_horizontal', default_format_config.get('header_alignment_horizontal', 'left'))
-                align_v = col_config.get('header_alignment_vertical', default_format_config.get('header_alignment_vertical', 'center'))
-
-                cell.font = Font(name=font_name, size=font_size, color=font_color_hex, bold=font_bold, italic=font_italic)
-                if fill_color_hex:
-                    cell.fill = PatternFill(start_color=fill_color_hex, end_color=fill_color_hex, fill_type="solid")
-                cell.alignment = Alignment(horizontal=align_h, vertical=align_v, wrap_text=False)
-                cell.border = border_style
-
-            # Acessar a coluna DESTAQUE de df_output_excel (que a tem) para formatar as linhas de dados
-            for df_row_idx, (_, df_row_data_com_destaque) in enumerate(df_output_excel.iterrows()):
-                row_idx_excel = df_row_idx + 2 # +1 para cabeçalho, +1 para 0-based to 1-based
-                # Verificar se é linha de espaçamento usando df_row_data_com_destaque
-                is_spacer_row_df = all(pd.isna(val) for col, val in df_row_data_com_destaque.items() if col not in ['DESTAQUE', 'Chave_Grupo_Secao_Ordenacao'])
-                if is_spacer_row_df: continue
-
-                deve_destacar_linha = df_row_data_com_destaque.get('DESTAQUE', False) == True
-
-                for col_idx_0based, col_name_excel in enumerate(col_names_in_excel): # col_names_in_excel são as colunas do df_para_salvar_excel
-                    cell = ws.cell(row=row_idx_excel, column=col_idx_0based + 1)
-                    col_config = COLUMNS_FORMATTING_CONFIG.get(col_name_excel, {})
-
-                    base_font_name = col_config.get('font_name', default_format_config.get('font_name', 'Calibri'))
-                    base_font_size = col_config.get('font_size', default_format_config.get('font_size', 10))
-                    base_font_color_hex = col_config.get('font_color', default_format_config.get('font_color', "000000")).replace("#","")
-                    base_font_bold = col_config.get('font_bold', default_format_config.get('font_bold', False))
-                    base_font_italic = col_config.get('font_italic', default_format_config.get('font_italic', False))
-                    base_fill_color_hex = col_config.get('fill_color', default_format_config.get('fill_color', None))
-                    if base_fill_color_hex: base_fill_color_hex = base_fill_color_hex.replace("#","")
-
-                    number_fmt = col_config.get('number_format', default_format_config.get('number_format', '@'))
-                    align_h = col_config.get('alignment_horizontal', default_format_config.get('alignment_horizontal', 'left'))
-                    align_v = col_config.get('alignment_vertical', default_format_config.get('alignment_vertical', 'center'))
-
-                    final_font = Font(name=base_font_name, size=base_font_size, color=base_font_color_hex, bold=base_font_bold, italic=base_font_italic)
-                    final_fill = PatternFill(fill_type=None)
-                    if base_fill_color_hex:
-                        final_fill = PatternFill(start_color=base_fill_color_hex, end_color=base_fill_color_hex, fill_type="solid")
-
-                    if deve_destacar_linha:
-                        final_fill = HIGHLIGHT_FILL
-                        final_font = Font(
-                            name=HIGHLIGHT_FONT.name if HIGHLIGHT_FONT.name else base_font_name,
-                            size=HIGHLIGHT_FONT.size if HIGHLIGHT_FONT.size else base_font_size,
-                            color=HIGHLIGHT_FONT.color.rgb if HIGHLIGHT_FONT.color else base_font_color_hex,
-                            bold=HIGHLIGHT_FONT.bold if HIGHLIGHT_FONT.bold is not None else base_font_bold,
-                            italic=HIGHLIGHT_FONT.italic if HIGHLIGHT_FONT.italic is not None else base_font_italic
-                        )
-
-                    cell.font = final_font
-                    cell.fill = final_fill
-                    cell.alignment = Alignment(horizontal=align_h, vertical=align_v, wrap_text=False)
-                    cell.border = border_style
-
-                    if cell.value is not None:
-                        if number_fmt not in ['@', 'General'] and isinstance(cell.value, str):
-                            try: cell.value = float(str(cell.value).replace("R$", "").replace(".", "").replace(",", ".").strip())
-                            except ValueError: pass
-
-                        if number_fmt == 'R$ #,##0.00' and isinstance(cell.value, (int, float)) and cell.value == 0:
-                            cell.value = 0.00
-                        cell.number_format = number_fmt
-
-            for col_idx_openpyxl_0based, col_name_excel in enumerate(col_names_in_excel):
-                column_letter = get_column_letter(col_idx_openpyxl_0based + 1)
-                max_len = 0
-
-                current_col_config = COLUMNS_FORMATTING_CONFIG.get(col_name_excel, {})
-                current_number_format = current_col_config.get('number_format', default_format_config.get('number_format', '@'))
-
-                for cell_row_idx_ws in range(1, ws.max_row + 1):
-                    cell = ws.cell(row=cell_row_idx_ws, column=col_idx_openpyxl_0based + 1)
-                    if cell.value is not None:
-                        text_val = str(cell.value)
-                        if isinstance(cell.value, (int, float)) and current_number_format == 'R$ #,##0.00':
-                            text_val = f"R$ {cell.value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                        elif isinstance(cell.value, (int,float)) and current_number_format == '0':
-                            text_val = f"{cell.value:.0f}"
-
-                        current_len = len(text_val)
-                        max_len = max(max_len, current_len)
-
-                header_cell_val = ws.cell(row=1, column=col_idx_openpyxl_0based + 1).value
-                if header_cell_val:
-                    max_len = max(max_len, len(str(header_cell_val)))
-
-                adjusted_width = min(max_len + 4, 60)
-                ws.column_dimensions[column_letter].width = adjusted_width if adjusted_width > 8 else 10
-
-        num_ofertas_reais = len(df_ordenado.dropna(subset=['PRODUTO'], how='all')) # df_ordenado ainda tem a forma antes dos espaçadores
-        print(f"✅ Relatório '{FINAL_OFFERS_REPORT_NAME}' criado com {num_ofertas_reais} ofertas na raiz do projeto.")
-        if mode == 'update':
-            # df_ordenado tem 'DESTAQUE' e 'Chave_Grupo_Secao_Ordenacao'
-            num_destacados = df_ordenado['DESTAQUE'].sum() if 'DESTAQUE' in df_ordenado.columns else 0
-            if df_antigo_relatorio is not None :
-                 print(f"   ✨ {num_destacados} ofertas foram destacadas como novas ou com preço alterado.")
-            elif not chaves_antigas_presentes and num_ofertas_reais > 0:
-                 print(f"   ✨ Todas as {num_ofertas_reais} ofertas são consideradas novas (nenhum relatório anterior para comparar).")
+        print(f"✅ Relatório '{NOME_RELATORIO_FINAL_OFERTAS}' criado com {num_ofertas_reais_no_relatorio} ofertas (incluindo linhas de dados, excluindo espaçadores) na raiz do projeto.")
 
     except Exception as e:
-        print(f"❌ Erro ao salvar/formatar Excel '{FINAL_OFFERS_REPORT_NAME}': {e}")
+        print(f"❌ Erro ao salvar/formatar Excel '{NOME_RELATORIO_FINAL_OFERTAS}': {e}")
         traceback.print_exc()
 
-# ------------------------------------------
-# FUNÇÃO PRINCIPAL
-# ------------------------------------------
 
-def main_logic(mode: str = 'create') -> None:
-    print(f"🚀 Iniciando processamento de ofertas (Modo: {mode})...")
+def gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml: pd.DataFrame, modo_operacao: str) -> None:
+    print(f"📊 Gerando o relatório final de ofertas: './{NOME_RELATORIO_FINAL_OFERTAS}'...")
+    caminho_mestre_prod = f'./{NOME_ARQUIVO_MESTRE_PRODUTOS}'
+    caminho_relatorio = f'./{NOME_RELATORIO_FINAL_OFERTAS}'
+    colunas_excel_finais_ordenadas = ['NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO']
 
-    if not os.path.isdir(INPUT_XML_DIR):
-        print(f"❌ ERRO: Diretório de entrada '{INPUT_XML_DIR}' não encontrado. Crie-o e adicione os arquivos XML.")
+    df_mestre_para_relatorio = carregar_dados_mestre_para_relatorio(caminho_mestre_prod)
+    if df_mestre_para_relatorio is None: # Erro ao carregar ou arquivo inválido
+        return
+
+    if df_ofertas_consolidadas_xml.empty and modo_operacao == 'create':
+        print(f"⚠️ DataFrame de ofertas XML está vazio. Nada a processar para '{NOME_RELATORIO_FINAL_OFERTAS}' no modo 'create'.")
+        return
+    elif df_ofertas_consolidadas_xml.empty and modo_operacao == 'update':
+        print(f"⚠️ DataFrame de ofertas XML está vazio. Tentando gerar relatório '{NOME_RELATORIO_FINAL_OFERTAS}' para limpar/atualizar com base no anterior.")
+
+    df_ofertas_xml_preparado = preparar_dados_ofertas_xml_para_fusao(df_ofertas_consolidadas_xml)
+
+    # Mesmo se df_ofertas_xml_preparado for vazio, o fluxo continua para permitir limpar o relatório em modo 'update'
+    df_fundido_ofertas_mestre = fundir_dados_ofertas_com_mestre(df_ofertas_xml_preparado, df_mestre_para_relatorio)
+    df_enriquecido_com_detalhes = enriquecer_dados_fundidos_com_detalhes_produto(df_fundido_ofertas_mestre)
+    df_relatorio_processado_agregado = agregar_e_transformar_ofertas_para_relatorio(df_enriquecido_com_detalhes)
+
+    # Garantir colunas essenciais e DESTAQUE antes da comparação
+    for col_excel in colunas_excel_finais_ordenadas:
+        if col_excel not in df_relatorio_processado_agregado.columns:
+            df_relatorio_processado_agregado[col_excel] = np.nan if col_excel in ['ID', 'PROMOÇÃO'] else ""
+    if 'DESTAQUE' not in df_relatorio_processado_agregado.columns:
+        df_relatorio_processado_agregado['DESTAQUE'] = False
+    df_relatorio_processado_agregado['DESTAQUE'] = df_relatorio_processado_agregado['DESTAQUE'].fillna(False).astype(bool)
+
+
+    df_antigo_relatorio_comp, chaves_antigas_comp, mapa_precos_antigos_comp = None, set(), {}
+    if modo_operacao == 'update':
+        df_antigo_relatorio_comp, chaves_antigas_comp, mapa_precos_antigos_comp = carregar_dados_relatorio_anterior_para_comparacao(caminho_relatorio)
+        df_relatorio_processado_agregado = definir_destaque_para_ofertas_alteradas_ou_novas(df_relatorio_processado_agregado, chaves_antigas_comp, mapa_precos_antigos_comp)
+
+    df_relatorio_final_ordenado_com_espacos = ordenar_dados_relatorio_e_adicionar_espacamento(df_relatorio_processado_agregado)
+
+    if df_relatorio_final_ordenado_com_espacos.empty:
+        print(f"⚠️ Nenhum dado para gerar o relatório '{NOME_RELATORIO_FINAL_OFERTAS}'.")
+        if modo_operacao == 'update' and os.path.exists(caminho_relatorio):
+            try:
+                pd.DataFrame(columns=colunas_excel_finais_ordenadas).to_excel(caminho_relatorio, index=False, sheet_name='Ofertas Finais')
+                print(f"ℹ️ Relatório anterior '{NOME_RELATORIO_FINAL_OFERTAS}' substituído por um arquivo vazio (sem ofertas atuais).")
+            except Exception as e_salvar_vazio:
+                print(f"❌ Erro ao tentar salvar relatório vazio: {e_salvar_vazio}")
+        return
+
+    # df_relatorio_final_ordenado_com_espacos é o que vai para o Excel (dados + espaçadores)
+    # df_relatorio_processado_agregado é usado para contagem de destaques (sem espaçadores, mas com info DESTAQUE)
+    escrever_e_estilizar_planilha_relatorio_final(
+        df_relatorio_final_ordenado_com_espacos,
+        df_relatorio_final_ordenado_com_espacos, # Passa o mesmo df, pois a função de estilo itera sobre ele para DESTAQUE
+        caminho_relatorio,
+        colunas_excel_finais_ordenadas,
+        CONFIGURACAO_FORMATACAO_COLUNAS,
+        PREENCHIMENTO_DESTAQUE,
+        FONTE_DESTAQUE
+    )
+
+    if modo_operacao == 'update':
+        # df_relatorio_processado_agregado tem 'DESTAQUE' antes do espaçamento
+        num_destacados = df_relatorio_processado_agregado['DESTAQUE'].sum() if 'DESTAQUE' in df_relatorio_processado_agregado.columns else 0
+        num_ofertas_reais = len(df_relatorio_processado_agregado.dropna(subset=['PRODUTO'], how='all'))
+
+        if df_antigo_relatorio_comp is not None: # Implica que o arquivo anterior existia
+             print(f"   ✨ {num_destacados} ofertas foram destacadas como novas ou com preço alterado.")
+        elif not chaves_antigas_comp and num_ofertas_reais > 0: # Implica que não havia arquivo anterior, mas há ofertas atuais
+             print(f"   ✨ Todas as {num_ofertas_reais} ofertas são consideradas novas (nenhum relatório anterior para comparar).")
+
+
+# ------------------------------------------
+# FUNÇÃO PRINCIPAL DE ORQUESTRAÇÃO
+# ------------------------------------------
+def executar_processamento_principal(modo_operacao: str) -> None:
+    print(f"🚀 Iniciando processamento de ofertas (Modo: {modo_operacao})...")
+
+    if not os.path.isdir(DIRETORIO_ENTRADA_XML):
+        print(f"❌ ERRO: Diretório de entrada '{DIRETORIO_ENTRADA_XML}' não encontrado. Crie-o e adicione os arquivos XML.")
         print("🏁 Processamento abortado.")
         return
 
-    arquivos_xml_originais = listar_arquivos_xml(INPUT_XML_DIR)
-    if not arquivos_xml_originais:
-        print(f"ℹ️ Nenhum arquivo XML encontrado em '{INPUT_XML_DIR}'.")
+    arquivos_xml_originais_encontrados = listar_arquivos_por_extensao(DIRETORIO_ENTRADA_XML, EXTENSAO_XML)
+    if not arquivos_xml_originais_encontrados:
+        print(f"ℹ️ Nenhum arquivo XML encontrado em '{DIRETORIO_ENTRADA_XML}'.")
     else:
-        print(f"🔄 Normalizando nomes de {len(arquivos_xml_originais)} arquivos XML...")
-        renomear_arquivos_em_lote(arquivos_xml_originais, INPUT_XML_DIR)
+        normalizar_nomes_arquivos_xml_em_lote(arquivos_xml_originais_encontrados, DIRETORIO_ENTRADA_XML)
 
-    arquivos_xml_para_processar = [
-        f for f in os.listdir(INPUT_XML_DIR)
-        if f.endswith(XML_EXTENSION) and os.path.isfile(os.path.join(INPUT_XML_DIR, f))
+    arquivos_xml_efetivos_para_processar = [
+        f for f in os.listdir(DIRETORIO_ENTRADA_XML)
+        if f.endswith(EXTENSAO_XML) and os.path.isfile(os.path.join(DIRETORIO_ENTRADA_XML, f))
     ]
-    if not arquivos_xml_para_processar:
-        print(f"ℹ️ Nenhum arquivo XML para processar em '{INPUT_XML_DIR}' após normalização.")
+    if not arquivos_xml_efetivos_para_processar:
+        print(f"ℹ️ Nenhum arquivo XML para processar em '{DIRETORIO_ENTRADA_XML}' após normalização.")
 
-    print(f"📄 Consolidando dados de {len(arquivos_xml_para_processar)} arquivos XML...")
-    df_ofertas_consolidadas_xml = consolidar_dados_de_xmls(arquivos_xml_para_processar)
+    df_ofertas_consolidadas_xml_geral = consolidar_dados_de_multiplos_arquivos_xml(arquivos_xml_efetivos_para_processar, DIRETORIO_ENTRADA_XML)
 
-    if df_ofertas_consolidadas_xml.empty and not arquivos_xml_para_processar:
+    if df_ofertas_consolidadas_xml_geral.empty and not arquivos_xml_efetivos_para_processar:
         print("ℹ️ Nenhum dado de produto foi consolidado dos arquivos XML nesta execução.")
 
-    print(f"💾 Atualizando o arquivo de cadastro de produtos: './{PRODUCT_MASTER_FILE_NAME}'...")
-    atualizar_cadastro_produtos_base(df_ofertas_consolidadas_xml)
+    gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml_geral)
 
-    gerar_relatorio = True
-    path_relatorio_final_check = f'./{FINAL_OFFERS_REPORT_NAME}' # Usar uma variável local para o check
-    if df_ofertas_consolidadas_xml.empty:
-        if mode == 'create':
+    necessario_gerar_relatorio = True
+    caminho_relatorio_final_para_verificacao = f'./{NOME_RELATORIO_FINAL_OFERTAS}'
+    if df_ofertas_consolidadas_xml_geral.empty:
+        if modo_operacao == 'create':
             print("🏁 Processamento concluído (sem dados XML para gerar relatório de ofertas no modo 'create').")
-            gerar_relatorio = False
-        elif mode == 'update' and not os.path.exists(path_relatorio_final_check):
+            necessario_gerar_relatorio = False
+        elif modo_operacao == 'update' and not os.path.exists(caminho_relatorio_final_para_verificacao):
             print("🏁 Processamento concluído (sem dados XML e sem relatório anterior para atualizar).")
-            gerar_relatorio = False
+            necessario_gerar_relatorio = False
+            # Se modo update e existe relatório anterior, ele será limpo/atualizado mesmo sem XMLs novos.
 
-    if gerar_relatorio:
-        print(f"📊 Gerando o relatório final de ofertas: './{FINAL_OFFERS_REPORT_NAME}'...")
-        gerar_relatorio_ofertas_finais(df_ofertas_consolidadas_xml, mode)
+    if necessario_gerar_relatorio:
+        gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml_geral, modo_operacao)
 
     print("🏁 Processamento concluído.")
 
+# ------------------------------------------
+# INTERFACE DE LINHA DE COMANDO (CLI)
+# ------------------------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Processa arquivos XML de ofertas e gera relatórios Excel.")
-    parser.add_argument(
+    analisador_argumentos = argparse.ArgumentParser(description="Processa arquivos XML de ofertas e gera relatórios Excel.")
+    analisador_argumentos.add_argument(
         "--mode",
         choices=['create', 'update'],
         default='create',
         help="Modo de operação: 'create' para gerar do zero (padrão), 'update' para destacar mudanças no relatório de ofertas."
     )
-    args = parser.parse_args()
-    main_logic(mode=args.mode)
+    argumentos_fornecidos = analisador_argumentos.parse_args()
+    executar_processamento_principal(modo_operacao=argumentos_fornecidos.mode)

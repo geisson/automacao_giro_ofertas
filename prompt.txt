@@ -584,4 +584,36 @@ quero que a organização seja em ordem alfabetica, seguinte a seguinte ordem: N
 
 
 o seguinte script esta funcionando perfeitamente, porem, qualquer mudança é muito problematica.
-como não entendo muito de programação, o s
+como não entendo muito de programação, qualquer mudança que precise fazer, tem que pedir para a ia ajustar.
+quero que voce refatore todo o script, deixando ele mais modular e organizado, utilizando programação funcional, e seguindo boas práticas de programação. separe os componentes em funções distintas, e crie uma estrutura de pastas que facilite a manutenção e a compreensão do código. quero que o código seja fácil de entender e modificar, mesmo para alguém que não tenha experiência prévia com o script. não quero que o codigo tenha comentarios. quero que as funções sejam nomeadas de forma clara e autoexplicativas, e que o código seja organizado em módulos lógicos. obrigatoriamente utilizando programação funcional, e seguindo boas práticas de programação, separando as funções puras das funções que possuem efeitos colaterais, como leitura e escrita de arquivos. mas quero que essas funções  com efeitos colaterais sejam criadas levando o conceito de programação funcional em consideração, ou seja, evitando efeitos colaterais desnecessários e mantendo a pureza das funções sempre que possível. quero que o código seja fácil de entender e modificar, mesmo para alguém que não tenha experiência prévia com o script. quero que o código seja modular, organizado e fácil de manter, seguindo as melhores práticas de programação funcional. cada função deve ter uma única responsabilidade, e o código deve ser estruturado de forma que facilite a leitura e a compreensão do fluxo de dados. quero que o código seja fácil de entender e modificar, mesmo para alguém que não tenha experiência prévia com o script. quero que o código seja modular, organizado e fácil de manter, seguindo as melhores práticas de programação funcional. cada função deve ser pequena e focada em uma única tarefa, facilitando a compreensão e a manutenção do código.
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+  <context>
+    <description>O script atual funciona perfeitamente, porém qualquer alteração se torna muito problemática.</description>
+    <motivation>Como não entendo muito de programação, qualquer mudança precisa ser ajustada pela IA.</motivation>
+  </context>
+  <refactorInstructions>
+    <objective>Refatorar todo o script, tornando-o mais modular e organizado.</objective>
+    <approach>Utilizar programação funcional e seguir boas práticas de programação.</approach>
+    <requirements>
+      <requirement>Separar os componentes em funções distintas.</requirement>
+      <requirement>Criar uma estrutura de pastas que facilite a manutenção e a compreensão do código.</requirement>
+      <requirement>O código deve ser fácil de entender e modificar, mesmo para alguém sem experiência prévia.</requirement>
+      <requirement>Não incluir comentários no código.</requirement>
+      <requirement>Nomear funções de forma clara e autoexplicativa.</requirement>
+      <requirement>Organizar o código em módulos lógicos.</requirement>
+      <requirement>Separar funções puras das funções com efeitos colaterais, como leitura e escrita de arquivos.</requirement>
+      <requirement>Evitar efeitos colaterais desnecessários e manter a pureza das funções sempre que possível.</requirement>
+      <requirement>Cada função deve ter uma única responsabilidade.</requirement>
+      <requirement>O código deve ser estruturado de forma a facilitar a leitura e a compreensão do fluxo de dados.</requirement>
+      <requirement>As funções devem ser pequenas e focadas em uma única tarefa para facilitar a manutenção.</requirement>
+      <requirement>O nome das funções e variaveis devem ser em português, pois não sei ingles.</requirement>
+      <requirement>O codigo refatorado deve ficar em apenas um arquivo. não crie outros arquvivos.</requirement>
+    </requirements>
+  </refactorInstructions>
+</prompt>
+
+<script>
+</script>
