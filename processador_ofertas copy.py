@@ -4,9 +4,6 @@ Script para processamento de arquivos XML de ofertas (processador_ofertas.py).
 V9.3: Reintroduzida e aplicada a COLUMNS_FORMATTING_CONFIG para formatação
       detalhada de colunas no relatório 'giro_da_praça_ofertas.xlsx'.
       A formatação de destaque (modo update) tem precedência para fundo/fonte.
-V9.5 (Solicitado): Alterada a organização do relatório 'giro_da_praça_ofertas.xlsx'
-      para NOME_PROMOÇÃO -> SESSÃO -> PRODUTO, e reintroduzido espaçamento
-      entre grupos de seção dentro da mesma promoção.
 """
 
 # ------------------------------------------
@@ -297,7 +294,6 @@ def atualizar_cadastro_produtos_base(df_ofertas_xml: pd.DataFrame) -> None:
         df_para_salvar = df_cadastro_base.reindex(columns=cols_cadastro_base_ordenadas)
         df_para_salvar = df_para_salvar.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID'])
 
-
         if 'ID' in df_para_salvar.columns:
             df_para_salvar['ID'] = pd.to_numeric(df_para_salvar['ID'], errors='coerce')
 
@@ -341,7 +337,7 @@ def atualizar_cadastro_produtos_base(df_ofertas_xml: pd.DataFrame) -> None:
                             current_id = int(float(id_cell_value))
                             if current_id in ids_produtos_oferta_xml:
                                 for col_num in range(1, ws.max_column + 1):
-                                    ws.cell(row=row_num, column=col_num).fill = HIGHLIGHT_FILL
+                                    ws.cell(row=row_num, column=col_num).fill = HIGHLIGHT_FILL # Usar o mesmo highlight do relatório
 
                                 nome_produto = "NOME NÃO ENCONTRADO"
                                 if nome_corrigido_col_index and ws.cell(row=row_num, column=nome_corrigido_col_index).value:
@@ -375,8 +371,11 @@ def atualizar_cadastro_produtos_base(df_ofertas_xml: pd.DataFrame) -> None:
 def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'create') -> None:
     path_cadastro_base = f'./{PRODUCT_MASTER_FILE_NAME}'
     path_relatorio_final = f'./{FINAL_OFFERS_REPORT_NAME}'
+    # Estas são as colunas que efetivamente irão para o Excel
     colunas_finais_excel_ordenadas = ['NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO']
-    colunas_com_destaque = colunas_finais_excel_ordenadas + ['DESTAQUE', 'Chave_Grupo_Secao_Ordenacao'] # Adicionar Chave aqui para DataFrame interno
+    # Estas são as colunas usadas internamente, incluindo a para lógica de destaque
+    colunas_com_destaque = colunas_finais_excel_ordenadas + ['DESTAQUE']
+
 
     try:
         df_cadastro_base = pd.read_excel(path_cadastro_base)
@@ -390,19 +389,22 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
     except Exception as e:
         print(f"❌ Erro ao carregar '{PRODUCT_MASTER_FILE_NAME}': {e}"); return
 
-    if df_ofertas_xml.empty and mode == 'create':
+    if df_ofertas_xml.empty and mode == 'create': # Se não há dados e é create, não gerar relatório
         print(f"⚠️ DataFrame de ofertas XML está vazio. Nada a processar para '{FINAL_OFFERS_REPORT_NAME}' no modo 'create'."); return
     elif df_ofertas_xml.empty and mode == 'update':
         print(f"⚠️ DataFrame de ofertas XML está vazio. Tentando gerar relatório '{FINAL_OFFERS_REPORT_NAME}' para limpar/atualizar com base no anterior.")
+        # Prossegue, pois pode haver um arquivo antigo para "limpar" ou mostrar que não há mais ofertas
 
     required_xml_cols = ['ID_Produto_XML', 'Promoção_XML', 'Preco_Promocao_XML', 'Nome_Produto_XML']
     if not df_ofertas_xml.empty and not all(col in df_ofertas_xml.columns for col in required_xml_cols):
         print(f"❌ DataFrame de ofertas XML não contém todas as colunas requeridas: {required_xml_cols}.")
         return
 
+    # Se df_ofertas_xml estiver vazio, df_merged também estará.
     df_ofertas_xml_copy = df_ofertas_xml[required_xml_cols].copy() if not df_ofertas_xml.empty else pd.DataFrame(columns=required_xml_cols)
     df_cadastro_base_copy = df_cadastro_base[['ID', 'SESSÃO', 'NOME_CORRIGIDO']].copy()
 
+    # Garantir tipos para merge, mesmo que df_ofertas_xml_copy esteja vazio
     df_ofertas_xml_copy['ID_Produto_XML'] = pd.to_numeric(df_ofertas_xml_copy['ID_Produto_XML'], errors='coerce').astype('Int64')
     df_cadastro_base_copy['ID'] = pd.to_numeric(df_cadastro_base_copy['ID'], errors='coerce').astype('Int64')
 
@@ -424,23 +426,28 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
             df_merged['ID'] = df_merged['ID'].fillna(df_merged['ID_FINAL'])
         elif 'ID_FINAL' in df_merged.columns :
             df_merged.rename(columns={'ID_FINAL': 'ID'}, inplace=True)
+        # Se 'ID' não existir após isso (ex: df_cadastro_base não tem ID, e ID_FINAL tb não), será NaN
 
         df_merged['NOME_CORRIGIDO'] = df_merged['NOME_CORRIGIDO'].fillna(df_merged['Nome_Produto_XML'])
         df_merged['SESSÃO'] = df_merged['SESSÃO'].fillna('SEÇÃO NÃO ESPECIFICADA')
         df_merged['NOME_PROMOÇÃO_ORIGINAL'] = df_merged['NOME_PROMOÇÃO_ORIGINAL'].fillna('')
 
+
         df_merged['Produto_Base_Agrupamento'] = df_merged['NOME_CORRIGIDO'].apply(lambda x: extract_product_base_name(str(x)))
         df_merged['Tipo_Produto_Variante'] = df_merged.apply(lambda row: extract_product_type_from_full_name(str(row['NOME_CORRIGIDO']), str(row['Produto_Base_Agrupamento'])), axis=1)
         df_merged['Excecao_Agrupamento'] = df_merged['SESSÃO'].isin(SECOES_EXCECAO_AGRUPAMENTO)
-    else:
+    else: # Se df_ofertas_xml_copy estava vazio, df_merged é um DataFrame vazio com as colunas esperadas
+        # Colunas que viriam do merge e processamento
         expected_merged_cols = ['ID', 'NOME_PROMOÇÃO_ORIGINAL', 'PROMOÇÃO', 'Nome_Produto_XML',
                                 'SESSÃO', 'NOME_CORRIGIDO', 'Produto_Base_Agrupamento',
                                 'Tipo_Produto_Variante', 'Excecao_Agrupamento']
         df_merged = pd.DataFrame(columns=expected_merged_cols)
 
+
     lista_dfs_processados = []
 
-    if not df_merged.empty:
+    # 1. Tratar exceções diretas
+    if not df_merged.empty: # Só processar se df_merged não for vazio
         df_excecoes_diretas = df_merged[df_merged['Excecao_Agrupamento']].copy()
         if not df_excecoes_diretas.empty:
             df_temp_data = {
@@ -451,11 +458,12 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                 'TIPO': "",
                 'PROMOÇÃO': df_excecoes_diretas['PROMOÇÃO'],
                 'DESTAQUE': False
-                # Chave_Grupo_Secao_Ordenacao será adicionada depois globalmente a df_relatorio_parcial
             }
             df_temp = pd.DataFrame(df_temp_data)
-            lista_dfs_processados.append(df_temp) # Não reindexar aqui para não perder colunas que podem não estar em colunas_com_destaque ainda
+            lista_dfs_processados.append(df_temp.reindex(columns=colunas_com_destaque))
 
+
+        # 2. Tratar itens não em exceção
         df_potenciais = df_merged[~df_merged['Excecao_Agrupamento']].copy()
         if not df_potenciais.empty:
             df_potenciais['Contagem_No_Grupo'] = df_potenciais.groupby(
@@ -478,7 +486,7 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                 ).rename(columns={'Produto_Base_Agrupamento': 'PRODUTO'})
 
                 df_agregado['DESTAQUE'] = False
-                lista_dfs_processados.append(df_agregado)
+                lista_dfs_processados.append(df_agregado.reindex(columns=colunas_com_destaque))
 
             df_unicos_em_grupo = df_potenciais[df_potenciais['Contagem_No_Grupo'] == 1].copy()
             if not df_unicos_em_grupo.empty:
@@ -492,24 +500,20 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                     'DESTAQUE': False
                 }
                 df_temp = pd.DataFrame(df_temp_data)
-                lista_dfs_processados.append(df_temp)
+                lista_dfs_processados.append(df_temp.reindex(columns=colunas_com_destaque))
 
     if lista_dfs_processados:
         df_relatorio_parcial = pd.concat(lista_dfs_processados, ignore_index=True)
     else:
-        # Criar com as colunas esperadas para o processamento, incluindo as auxiliares se necessário
-        df_relatorio_parcial = pd.DataFrame(columns=[c for c in colunas_com_destaque if c != 'Chave_Grupo_Secao_Ordenacao'])
-
-
-    # Garantir colunas essenciais e a coluna DESTAQUE
-    for col in colunas_finais_excel_ordenadas: # Garante colunas que vão para o Excel
-        if col not in df_relatorio_parcial.columns:
-            df_relatorio_parcial[col] = np.nan if col in ['ID', 'PROMOÇÃO'] else ""
+        df_relatorio_parcial = pd.DataFrame(columns=colunas_com_destaque)
 
     if 'DESTAQUE' not in df_relatorio_parcial.columns:
-        df_relatorio_parcial['DESTAQUE'] = False
-    df_relatorio_parcial['DESTAQUE'] = df_relatorio_parcial['DESTAQUE'].fillna(False).astype(bool)
+        if df_relatorio_parcial.empty:
+             df_relatorio_parcial = pd.DataFrame(columns=colunas_com_destaque) # Garante colunas mesmo se vazio
+        else: # Se não vazio mas sem DESTAQUE, adiciona
+            df_relatorio_parcial['DESTAQUE'] = False
 
+    df_relatorio_parcial['DESTAQUE'] = df_relatorio_parcial['DESTAQUE'].fillna(False).astype(bool)
 
     df_antigo_relatorio = None
     chaves_antigas_presentes = set()
@@ -538,7 +542,7 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
         except Exception as e:
             print(f"❌ Erro ao ler relatório anterior '{FINAL_OFFERS_REPORT_NAME}': {e}. Criando novo sem destaques de atualização.")
 
-    if mode == 'update' and not df_relatorio_parcial.empty:
+    if mode == 'update' and not df_relatorio_parcial.empty: # Só aplicar se houver dados no relatório atual
         if 'ID' in df_relatorio_parcial.columns and df_relatorio_parcial['ID'].notna().any():
             df_relatorio_parcial['CHAVE_COMP'] = df_relatorio_parcial['ID'].astype(str)
         else:
@@ -565,59 +569,35 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
     for col in ['NOME_PROMOÇÃO', 'SESSÃO', 'PRODUTO', 'TIPO']:
         if col in df_relatorio_parcial.columns:
             df_relatorio_parcial[col] = df_relatorio_parcial[col].fillna("")
-    for col in ['ID', 'PROMOÇÃO']: # Já garantido acima, mas redundância não prejudica
+    for col in ['ID', 'PROMOÇÃO']:
         if col not in df_relatorio_parcial.columns:
             df_relatorio_parcial[col] = np.nan
-        else: # Certificar que IDs possam ser NaN onde não existem
-            if col == 'ID':
-                df_relatorio_parcial[col] = pd.to_numeric(df_relatorio_parcial[col], errors='coerce').astype('Int64')
 
 
-    # --- INÍCIO DA MODIFICAÇÃO PARA ORDENAÇÃO E ESPAÇAMENTO (COM ESPAÇO ENTRE SEÇÕES TAMBÉM) ---
-    if 'SESSÃO' in df_relatorio_parcial.columns:
-        df_relatorio_parcial['Chave_Grupo_Secao_Ordenacao'] = df_relatorio_parcial['SESSÃO'].apply(get_section_sort_key)
-    else:
-        df_relatorio_parcial['Chave_Grupo_Secao_Ordenacao'] = np.nan
-
+    df_relatorio_parcial['Chave_Grupo_Secao_Ordenacao'] = df_relatorio_parcial['SESSÃO'].apply(get_section_sort_key)
     df_ordenado = df_relatorio_parcial.sort_values(
-        by=['NOME_PROMOÇÃO', 'Chave_Grupo_Secao_Ordenacao', 'SESSÃO', 'PRODUTO'],
-        ascending=[True, True, True, True]
+        by=['Chave_Grupo_Secao_Ordenacao', 'SESSÃO', 'PRODUTO'], ascending=[True, True, True]
     ).reset_index(drop=True)
 
     lista_linhas_com_espacos = []
-    ultimo_nome_promocao_visto = None
-    ultima_chave_grupo_secao_vista = None
-    # colunas_df_ordenado_com_destaque agora inclui 'Chave_Grupo_Secao_Ordenacao'
+    ultima_chave_grupo_vista = None
     colunas_df_ordenado_com_destaque = df_ordenado.columns.tolist()
 
-    if not df_ordenado.empty:
+    if not df_ordenado.empty: # Só adicionar linhas se df_ordenado não for vazio
         for _, row_data in df_ordenado.iterrows():
-            nome_promocao_atual = row_data['NOME_PROMOÇÃO']
-            chave_grupo_secao_atual = row_data['Chave_Grupo_Secao_Ordenacao']
-
-            adicionar_espaco = False
-            if ultimo_nome_promocao_visto is not None:
-                if nome_promocao_atual != ultimo_nome_promocao_visto:
-                    adicionar_espaco = True
-                elif chave_grupo_secao_atual != ultima_chave_grupo_secao_vista:
-                    adicionar_espaco = True
-
-            if adicionar_espaco:
-                spacer_row_data = {col: np.nan for col in colunas_df_ordenado_com_destaque}
-                if 'DESTAQUE' in spacer_row_data:
-                    spacer_row_data['DESTAQUE'] = False
-                lista_linhas_com_espacos.append(spacer_row_data)
-
+            chave_grupo_atual = row_data['Chave_Grupo_Secao_Ordenacao']
+            if ultima_chave_grupo_vista is not None and chave_grupo_atual != ultima_chave_grupo_vista:
+                spacer_row = {col: np.nan for col in colunas_df_ordenado_com_destaque}
+                if 'DESTAQUE' in spacer_row: spacer_row['DESTAQUE'] = False
+                lista_linhas_com_espacos.append(spacer_row)
             lista_linhas_com_espacos.append(row_data.to_dict())
-
-            ultimo_nome_promocao_visto = nome_promocao_atual
-            ultima_chave_grupo_secao_vista = chave_grupo_secao_atual
-    # --- FIM DA MODIFICAÇÃO PARA ORDENAÇÃO E ESPAÇAMENTO ---
+            ultima_chave_grupo_vista = chave_grupo_atual
 
     if not lista_linhas_com_espacos:
         print(f"⚠️ Nenhum dado para gerar o relatório '{FINAL_OFFERS_REPORT_NAME}'.");
         if mode == 'update' and os.path.exists(path_relatorio_final):
             try:
+                # Criar um DataFrame vazio com as colunas finais esperadas (sem DESTAQUE)
                 pd.DataFrame(columns=colunas_finais_excel_ordenadas).to_excel(path_relatorio_final, index=False, sheet_name='Ofertas Finais')
                 print(f"ℹ️ Relatório anterior '{FINAL_OFFERS_REPORT_NAME}' substituído por um arquivo vazio (sem ofertas atuais).")
             except Exception as e_save_empty:
@@ -627,14 +607,9 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
     df_output_excel = pd.DataFrame(lista_linhas_com_espacos)
     df_output_excel = df_output_excel.drop(columns=['Chave_Grupo_Secao_Ordenacao'], errors='ignore')
 
-
     try:
         with pd.ExcelWriter(path_relatorio_final, engine='openpyxl') as writer:
-            # df_para_salvar_excel deve conter apenas as colunas finais para o Excel
-            df_para_salvar_excel = df_output_excel[colunas_finais_excel_ordenadas].copy() # Seleciona e copia
-            # Certificar que 'DESTAQUE' não está em df_para_salvar_excel (já não deveria estar por colunas_finais_excel_ordenadas)
-            # df_para_salvar_excel = df_output_excel.drop(columns=['DESTAQUE'], errors='ignore') # Redundante se usando colunas_finais_excel_ordenadas
-
+            df_para_salvar_excel = df_output_excel.drop(columns=['DESTAQUE'], errors='ignore')
             df_para_salvar_excel.to_excel(writer, index=False, sheet_name='Ofertas Finais')
             ws = writer.sheets['Ofertas Finais']
 
@@ -644,6 +619,7 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
 
             col_names_in_excel = df_para_salvar_excel.columns.tolist()
 
+            # Aplicar formatação de cabeçalho
             header_row_excel = 1
             default_format_config = COLUMNS_FORMATTING_CONFIG.get('_DEFAULT_', {})
             for col_idx_0based, col_name_excel in enumerate(col_names_in_excel):
@@ -666,19 +642,19 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                 cell.alignment = Alignment(horizontal=align_h, vertical=align_v, wrap_text=False)
                 cell.border = border_style
 
-            # Acessar a coluna DESTAQUE de df_output_excel (que a tem) para formatar as linhas de dados
-            for df_row_idx, (_, df_row_data_com_destaque) in enumerate(df_output_excel.iterrows()):
-                row_idx_excel = df_row_idx + 2 # +1 para cabeçalho, +1 para 0-based to 1-based
-                # Verificar se é linha de espaçamento usando df_row_data_com_destaque
-                is_spacer_row_df = all(pd.isna(val) for col, val in df_row_data_com_destaque.items() if col not in ['DESTAQUE', 'Chave_Grupo_Secao_Ordenacao'])
+            # Aplicar formatação de dados
+            for df_row_idx, (_, df_row_data) in enumerate(df_output_excel.iterrows()):
+                row_idx_excel = df_row_idx + 2
+                is_spacer_row_df = all(pd.isna(val) for col, val in df_row_data.items() if col != 'DESTAQUE')
                 if is_spacer_row_df: continue
 
-                deve_destacar_linha = df_row_data_com_destaque.get('DESTAQUE', False) == True
+                deve_destacar_linha = df_row_data.get('DESTAQUE', False) == True
 
-                for col_idx_0based, col_name_excel in enumerate(col_names_in_excel): # col_names_in_excel são as colunas do df_para_salvar_excel
+                for col_idx_0based, col_name_excel in enumerate(col_names_in_excel):
                     cell = ws.cell(row=row_idx_excel, column=col_idx_0based + 1)
                     col_config = COLUMNS_FORMATTING_CONFIG.get(col_name_excel, {})
 
+                    # Estilos base da coluna
                     base_font_name = col_config.get('font_name', default_format_config.get('font_name', 'Calibri'))
                     base_font_size = col_config.get('font_size', default_format_config.get('font_size', 10))
                     base_font_color_hex = col_config.get('font_color', default_format_config.get('font_color', "000000")).replace("#","")
@@ -691,6 +667,7 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                     align_h = col_config.get('alignment_horizontal', default_format_config.get('alignment_horizontal', 'left'))
                     align_v = col_config.get('alignment_vertical', default_format_config.get('alignment_vertical', 'center'))
 
+                    # Aplicar estilos
                     final_font = Font(name=base_font_name, size=base_font_size, color=base_font_color_hex, bold=base_font_bold, italic=base_font_italic)
                     final_fill = PatternFill(fill_type=None)
                     if base_fill_color_hex:
@@ -698,6 +675,7 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
 
                     if deve_destacar_linha:
                         final_fill = HIGHLIGHT_FILL
+                        # Priorizar HIGHLIGHT_FONT, mas usar base para o que não for definido no highlight
                         final_font = Font(
                             name=HIGHLIGHT_FONT.name if HIGHLIGHT_FONT.name else base_font_name,
                             size=HIGHLIGHT_FONT.size if HIGHLIGHT_FONT.size else base_font_size,
@@ -711,19 +689,24 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                     cell.alignment = Alignment(horizontal=align_h, vertical=align_v, wrap_text=False)
                     cell.border = border_style
 
+                    # Garantir que o valor seja numérico para formatos de número específicos
                     if cell.value is not None:
                         if number_fmt not in ['@', 'General'] and isinstance(cell.value, str):
                             try: cell.value = float(str(cell.value).replace("R$", "").replace(".", "").replace(",", ".").strip())
-                            except ValueError: pass
+                            except ValueError: pass # Mantém como string se não puder converter
 
+                        # Aplicar formato de número após possível conversão
+                        # Se o valor for 0 e o formato for contábil, garantir 0.00
                         if number_fmt == 'R$ #,##0.00' and isinstance(cell.value, (int, float)) and cell.value == 0:
                             cell.value = 0.00
                         cell.number_format = number_fmt
 
+            # Ajuste de largura das colunas
             for col_idx_openpyxl_0based, col_name_excel in enumerate(col_names_in_excel):
                 column_letter = get_column_letter(col_idx_openpyxl_0based + 1)
                 max_len = 0
 
+                # Para medir a largura, precisamos considerar o valor formatado
                 current_col_config = COLUMNS_FORMATTING_CONFIG.get(col_name_excel, {})
                 current_number_format = current_col_config.get('number_format', default_format_config.get('number_format', '@'))
 
@@ -739,6 +722,7 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                         current_len = len(text_val)
                         max_len = max(max_len, current_len)
 
+                # Adicionar um pouco mais para o cabeçalho se for maior
                 header_cell_val = ws.cell(row=1, column=col_idx_openpyxl_0based + 1).value
                 if header_cell_val:
                     max_len = max(max_len, len(str(header_cell_val)))
@@ -746,11 +730,10 @@ def gerar_relatorio_ofertas_finais(df_ofertas_xml: pd.DataFrame, mode: str = 'cr
                 adjusted_width = min(max_len + 4, 60)
                 ws.column_dimensions[column_letter].width = adjusted_width if adjusted_width > 8 else 10
 
-        num_ofertas_reais = len(df_ordenado.dropna(subset=['PRODUTO'], how='all')) # df_ordenado ainda tem a forma antes dos espaçadores
+        num_ofertas_reais = len(df_ordenado.dropna(subset=['PRODUTO'], how='all'))
         print(f"✅ Relatório '{FINAL_OFFERS_REPORT_NAME}' criado com {num_ofertas_reais} ofertas na raiz do projeto.")
         if mode == 'update':
-            # df_ordenado tem 'DESTAQUE' e 'Chave_Grupo_Secao_Ordenacao'
-            num_destacados = df_ordenado['DESTAQUE'].sum() if 'DESTAQUE' in df_ordenado.columns else 0
+            num_destacados = df_ordenado['DESTAQUE'].sum() if 'DESTAQUE' in df_ordenado else 0
             if df_antigo_relatorio is not None :
                  print(f"   ✨ {num_destacados} ofertas foram destacadas como novas ou com preço alterado.")
             elif not chaves_antigas_presentes and num_ofertas_reais > 0:
@@ -789,19 +772,22 @@ def main_logic(mode: str = 'create') -> None:
     print(f"📄 Consolidando dados de {len(arquivos_xml_para_processar)} arquivos XML...")
     df_ofertas_consolidadas_xml = consolidar_dados_de_xmls(arquivos_xml_para_processar)
 
-    if df_ofertas_consolidadas_xml.empty and not arquivos_xml_para_processar:
+    if df_ofertas_consolidadas_xml.empty and not arquivos_xml_para_processar: # Só se não houve XML de entrada
         print("ℹ️ Nenhum dado de produto foi consolidado dos arquivos XML nesta execução.")
 
     print(f"💾 Atualizando o arquivo de cadastro de produtos: './{PRODUCT_MASTER_FILE_NAME}'...")
     atualizar_cadastro_produtos_base(df_ofertas_consolidadas_xml)
 
+    # Condição para pular a geração do relatório final
+    # Se o DataFrame de ofertas XML está vazio E (é modo create OU não há relatório anterior no modo update)
+    # Basicamente, só tentamos gerar um relatório "vazio" no modo update se um relatório anterior EXISTIA.
     gerar_relatorio = True
-    path_relatorio_final_check = f'./{FINAL_OFFERS_REPORT_NAME}' # Usar uma variável local para o check
     if df_ofertas_consolidadas_xml.empty:
         if mode == 'create':
             print("🏁 Processamento concluído (sem dados XML para gerar relatório de ofertas no modo 'create').")
             gerar_relatorio = False
-        elif mode == 'update' and not os.path.exists(path_relatorio_final_check):
+        elif mode == 'update' and not os.path.exists(path_relatorio_final):
+            # No modo update, se não há dados XML e o relatório antigo não existe, não há o que fazer.
             print("🏁 Processamento concluído (sem dados XML e sem relatório anterior para atualizar).")
             gerar_relatorio = False
 

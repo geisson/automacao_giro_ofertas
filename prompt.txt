@@ -574,3 +574,14 @@ python processador_ofertas.py --mode create
 python processador_ofertas.py --mode update
 
 python processador_ofertas.py --mode create
+
+
+
+analize o seguinte script. nele, a planilha `giro_da_praça_ofertas.xlsx` e organizada com base na coluna sessão. quero que ela seja organizada pela coluna promoção. pois as promoções estão ficando misturadas.
+
+quero que a organização seja em ordem alfabetica, seguinte a seguinte ordem: NOME_PROMOÇÃO	-> SESSÃO -> PRODUTO
+
+
+
+o seguinte script esta funcionando perfeitamente, porem, qualquer mudança é muito problematica.
+como não entendo muito de programação, o s
