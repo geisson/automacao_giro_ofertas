@@ -1,0 +1,17 @@
+# Arquivos de ambiente virtual Python
+.venv/
+venv/
+ENV/
+env/
+*.pyc
+__pycache__/
+
+# Arquivos de backup
+bkp/
+
+# Arquivos de log (se você implementar logging para arquivos)
+*.log
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
