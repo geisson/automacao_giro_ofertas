@@ -194,7 +194,7 @@ def extrair_nome_base_produto(nome_completo_produto: str) -> str:
         "COMPRIMIDOS", "COMPRIMIDO", "ENVELOPES", "ENVELOPE",
         "KG", "GR", "G", "MG", "L", "ML", "CM", "MM", "M",
         "UN", "UND", "UNID", "PC", "PÇ", "PCT", "CX", "FD", "GF", "LT", "PT", "RL", "SC", "TB", "VD",
-        "BL", "CT", "DP", "GL", "RF", "TBL", "FL", "CAPS", "COMP", "ENV"
+        "BL", "CT", "DP", "GL", "RF", "TBL", "FL", "CAPS", "COMP", "ENV", "KIT",
     ]
     nome_produto_normalizado_espacos = ' '.join(nome_completo_produto.split())
     padrao_regex_unidades = "|".join(map(re.escape, sorted(unidades, key=len, reverse=True)))
