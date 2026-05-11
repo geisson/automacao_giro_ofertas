@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from typing import List, Dict, Any
 import pandas as pd
 import os
 import glob
@@ -29,7 +30,7 @@ FONTE_DESTAQUE = Font(color="FFFFFF", bold=True)
 # Coluna principal para ordenação.
 # Opções válidas (nomes das colunas no DataFrame final antes de ir para o Excel):
 # 'NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO'
-COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'NOME_PROMOÇÃO'
+COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'SESSÃO'
 # Define a ordem da coluna primária: True para ascendente, False para descendente.
 ORDEM_ASCENDENTE_PRIMARIA_RELATORIO = True
 # -----------------------------------------------------------
@@ -134,28 +135,72 @@ def converter_dados_produto_xml_para_dicionario(dados_produto_xml: Dict[str, Any
     }
 
 
-def ler_e_extrair_produtos_de_arquivo_xml(nome_arquivo_xml: str, diretorio_xml: str) -> List[Dict[str, Any]]:
+def ler_e_extrair_produtos_de_arquivo_xml(
+    nome_arquivo_xml: str,
+    diretorio_xml: str
+) -> List[Dict[str, Any]]:
+
     caminho_completo_arquivo = os.path.join(diretorio_xml, nome_arquivo_xml)
+
     try:
         with open(caminho_completo_arquivo, 'rb') as arquivo_xml:
             dados_xml_lidos = xmltodict.parse(arquivo_xml)
-            if 'temporario_846' not in dados_xml_lidos:
-                print(f"⚠️ Estrutura 'temporario_846' não encontrada em {nome_arquivo_xml}.")
-                return []
 
-            conteudo_temporario_846 = dados_xml_lidos['temporario_846']
-            lista_produtos_xml_bruto = conteudo_temporario_846.get('temporario_846_row', [])
+        # Procura dinamicamente pela chave que começa com "temporario_846"
+        chave_principal = next(
+            (
+                chave
+                for chave in dados_xml_lidos.keys()
+                if chave.startswith("temporario_846")
+            ),
+            None
+        )
 
-            if isinstance(lista_produtos_xml_bruto, dict):
-                lista_produtos_xml_bruto = [lista_produtos_xml_bruto]
+        if not chave_principal:
+            print(
+                f"⚠️ Nenhuma estrutura iniciando com "
+                f"'temporario_846' encontrada em {nome_arquivo_xml}."
+            )
+            return []
 
-            if not lista_produtos_xml_bruto:
-                return []
+        conteudo_principal = dados_xml_lidos[chave_principal]
 
-            return [converter_dados_produto_xml_para_dicionario(p) for p in lista_produtos_xml_bruto if isinstance(p, dict)]
+        # Procura dinamicamente pela chave de linhas (_row)
+        chave_rows = next(
+            (
+                chave
+                for chave in conteudo_principal.keys()
+                if chave.startswith(chave_principal) and chave.endswith("_row")
+            ),
+            None
+        )
+
+        if not chave_rows:
+            print(
+                f"⚠️ Nenhuma estrutura de linhas encontrada "
+                f"em {nome_arquivo_xml}."
+            )
+            return []
+
+        lista_produtos_xml_bruto = conteudo_principal.get(chave_rows, [])
+
+        # Quando existe apenas um item, xmltodict retorna dict ao invés de lista
+        if isinstance(lista_produtos_xml_bruto, dict):
+            lista_produtos_xml_bruto = [lista_produtos_xml_bruto]
+
+        if not lista_produtos_xml_bruto:
+            return []
+
+        return [
+            converter_dados_produto_xml_para_dicionario(produto)
+            for produto in lista_produtos_xml_bruto
+            if isinstance(produto, dict)
+        ]
+
     except FileNotFoundError:
         print(f"❌ Arquivo XML não encontrado: {caminho_completo_arquivo}")
         return []
+
     except Exception as e:
         print(f"❌ Erro ao processar XML {nome_arquivo_xml}: {e}")
         traceback.print_exc()
