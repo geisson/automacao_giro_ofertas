@@ -127,11 +127,22 @@ def normalizar_nomes_arquivos_xml_em_lote(arquivos_xml_entrada: List[str], diret
 
 
 def converter_dados_produto_xml_para_dicionario(dados_produto_xml: Dict[str, Any]) -> Dict[str, Any]:
+    promocao = (
+        dados_produto_xml.get("descrpromocao")
+        or "PROMOÇÃO"
+    )
+
+    preco = (
+        dados_produto_xml.get("precopromocao")
+        or dados_produto_xml.get("valpromvarejo")
+        or 0
+    )
+
     return {
-        "Promoção_XML": dados_produto_xml.get('descrpromocao', ''),
-        "ID_Produto_XML": int(dados_produto_xml.get('idsubproduto', 0)),
-        "Nome_Produto_XML": dados_produto_xml.get('descrresproduto', ''),
-        "Preco_Promocao_XML": float(dados_produto_xml.get('precopromocao', 0.0) if dados_produto_xml.get('precopromocao') not in [None, ''] else 0.0)
+        "Promoção_XML": promocao,
+        "ID_Produto_XML": int(dados_produto_xml.get("idsubproduto", 0)),
+        "Nome_Produto_XML": dados_produto_xml.get("descrresproduto", ""),
+        "Preco_Promocao_XML": float(preco if preco not in [None, ""] else 0.0),
     }
 
 

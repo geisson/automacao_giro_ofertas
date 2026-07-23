@@ -1,0 +1,3 @@
+atue como um programador especialista em python.
+tenho o script "processador_ofertas.py", ele processa o xmls com a extrutura do arquivo "arquivo_xml_base.xml". preciso que ele tabem processe xmls com a extrutura do "arquivo_xml_novo.xml". deixando bem claro: o script deve processar OS DOIS TIPOS de extruturas de arquivos. me de apenas a função que devo mudar.
+os arquivos estão em anexo.
