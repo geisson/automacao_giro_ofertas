@@ -10,6 +10,7 @@ import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 import traceback
 import argparse
 
@@ -352,10 +353,45 @@ def preparar_novos_produtos_para_dataframe_mestre(df_novos_identificados: pd.Dat
 
 
 def salvar_dataframe_mestre_formatado(df_mestre_final: pd.DataFrame, caminho_arquivo_mestre: str) -> None:
+    """
+    Salva o cadastro mestre preservando EXATAMENTE a ordem das linhas recebidas.
+
+    O arquivo é criado como uma Tabela do Excel. Isso é importante porque,
+    quando o usuário usar o filtro/sort de uma coluna (por exemplo,
+    NOME_CORRIGIDO), o Excel moverá a LINHA INTEIRA, mantendo ID, SESSÃO,
+    NOME_SISTEMA e NOME_CORRIGIDO juntos.
+    """
     try:
-        if 'ID' in df_mestre_final.columns:
-            df_mestre_final['ID'] = pd.to_numeric(df_mestre_final['ID'], errors='coerce')
-        df_mestre_final.to_excel(caminho_arquivo_mestre, index=False)
+        df_para_salvar = df_mestre_final.copy()
+
+        if 'ID' in df_para_salvar.columns:
+            df_para_salvar['ID'] = pd.to_numeric(df_para_salvar['ID'], errors='coerce')
+
+        # IMPORTANTE: não ordenar aqui. A ordem definida pelo usuário no Excel
+        # deve ser preservada na próxima execução.
+        df_para_salvar.to_excel(caminho_arquivo_mestre, index=False, sheet_name='Produtos')
+
+        workbook = load_workbook(caminho_arquivo_mestre)
+        planilha = workbook['Produtos']
+        planilha.freeze_panes = 'A2'
+        planilha.sheet_view.showGridLines = False
+
+        # Cria uma Tabela real do Excel. Os filtros/ordenação passam a operar
+        # sobre a linha inteira, e não sobre uma coluna isoladamente.
+        if planilha.max_row >= 1 and planilha.max_column >= 1:
+            ref_tabela = f"A1:{get_column_letter(planilha.max_column)}{planilha.max_row}"
+            tabela = Table(displayName='ProdutosCadastrados', ref=ref_tabela)
+            estilo_tabela = TableStyleInfo(
+                name='TableStyleMedium2',
+                showFirstColumn=False,
+                showLastColumn=False,
+                showRowStripes=False,
+                showColumnStripes=False
+            )
+            tabela.tableStyleInfo = estilo_tabela
+            planilha.add_table(tabela)
+
+        workbook.save(caminho_arquivo_mestre)
     except Exception as e:
         raise Exception(f"Erro ao salvar DataFrame mestre em '{caminho_arquivo_mestre}': {e}")
 
@@ -431,8 +467,11 @@ def gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml: p
         if not df_ofertas_consolidadas_xml.empty:
             print(f"ℹ️ Nenhum produto novo das ofertas XML para adicionar ao '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
 
-    df_mestre_para_salvar = df_mestre_atual.reindex(columns=colunas_mestre_ordenadas)
-    df_mestre_para_salvar = df_mestre_para_salvar.sort_values(by=['SESSÃO', 'NOME_SISTEMA', 'ID'])
+    # NÃO ordenar o cadastro mestre automaticamente.
+    # A ordem das linhas é uma preferência do usuário e deve sobreviver às
+    # próximas execuções do script. O relacionamento entre os campos é feito
+    # pelo ID, e não pela posição da linha.
+    df_mestre_para_salvar = df_mestre_atual.reindex(columns=colunas_mestre_ordenadas).copy()
 
     try:
         salvar_dataframe_mestre_formatado(df_mestre_para_salvar, caminho_mestre)
