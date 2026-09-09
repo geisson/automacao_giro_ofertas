@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any
 import pandas as pd
 import os
 import glob
 import xmltodict
+from typing import List, Dict, Any, Optional, Tuple, Set
 import re
 import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 import traceback
 import argparse
 
@@ -24,14 +26,12 @@ SECOES_EXCECAO_AGRUPAMENTO = ["#01 MERCEARIA - #01 ALTO GIRO", "#01 MERCEARIA - 
 
 PREENCHIMENTO_DESTAQUE = PatternFill(start_color="45A045", end_color="45A045", fill_type="solid")
 FONTE_DESTAQUE = Font(color="FFFFFF", bold=True)
-PREENCHIMENTO_CADASTRO_ALTERADO = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-FONTE_CADASTRO_ALTERADO = Font(color="9C0006", bold=True)
 
 # --- NOVAS CONSTANTES PARA ORDENAÇÃO DO RELATÓRIO FINAL ---
 # Coluna principal para ordenação.
 # Opções válidas (nomes das colunas no DataFrame final antes de ir para o Excel):
 # 'NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO'
-COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'NOME_PROMOÇÃO'
+COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'SESSÃO'
 # Define a ordem da coluna primária: True para ascendente, False para descendente.
 ORDEM_ASCENDENTE_PRIMARIA_RELATORIO = True
 # -----------------------------------------------------------
@@ -352,219 +352,61 @@ def preparar_novos_produtos_para_dataframe_mestre(df_novos_identificados: pd.Dat
     return pd.DataFrame(lista_novos_formatados, columns=colunas_mestre_padrao)
 
 
-def _normalizar_nome_para_comparacao(nome: Any) -> str:
-    """Normaliza nomes para comparar XML x cadastro sem considerar maiúsculas, acentos e espaços extras."""
-    if nome is None or pd.isna(nome):
-        return ""
-    texto = str(nome).strip()
-    texto = re.sub(r"\s+", " ", texto)
-    return normalizar_texto_para_comparacao(texto)
-
-
-def _obter_ids_validos(df: pd.DataFrame, coluna: str) -> Set[int]:
-    if coluna not in df.columns:
-        return set()
-    serie = pd.to_numeric(df[coluna], errors='coerce').dropna()
-    return set(serie.astype(int).tolist())
-
-
-def _criar_tabela_excel_mestre(planilha, nome_tabela: str = "TabelaProdutosCadastrados") -> None:
-    """Configura filtro seguro no cadastro sem criar uma Excel Table estrutural.
-
-    O cadastro mestre é um banco de dados mantido pelo usuário. O AutoFilter
-    oferece filtros e ordenação de linhas inteiras, sem o risco de corromper
-    a estrutura do arquivo ao recriar tabelas do Excel a cada execução.
-    """
-    if planilha.max_row < 1 or planilha.max_column < 1:
-        return
-
-    ref = f"A1:{get_column_letter(planilha.max_column)}{max(1, planilha.max_row)}"
-    planilha.auto_filter.ref = ref
-    planilha.freeze_panes = 'B2'
-
-    # O cadastro mestre NÃO usa Excel Table estrutural.
-    # Remova qualquer tabela antiga/corrompida que tenha sido criada por versões anteriores.
-    # O AutoFilter fornece filtros e ordenação sem criar /xl/tables/table*.xml.
-    for nome_tabela in list(planilha.tables.keys()):
-        del planilha.tables[nome_tabela]
-
-
-def _criar_backup_arquivo(caminho_arquivo: str) -> Optional[str]:
-    """Cria backup do cadastro antes de uma alteração efetiva."""
-    if not os.path.exists(caminho_arquivo):
-        return None
-    diretorio_backup = os.path.join(os.path.dirname(caminho_arquivo) or '.', 'backup_produtos')
-    os.makedirs(diretorio_backup, exist_ok=True)
-    from datetime import datetime
-    nome_base = os.path.splitext(os.path.basename(caminho_arquivo))[0]
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-    caminho_backup = os.path.join(diretorio_backup, f'{nome_base}_{timestamp}.xlsx')
-    import shutil
-    shutil.copy2(caminho_arquivo, caminho_backup)
-    return caminho_backup
-
-
 def salvar_dataframe_mestre_formatado(df_mestre_final: pd.DataFrame, caminho_arquivo_mestre: str) -> None:
-    """Compatibilidade para criação inicial; arquivos existentes são tratados via openpyxl para preservar a ordem."""
+    """
+    Salva o cadastro mestre preservando EXATAMENTE a ordem das linhas recebidas.
+
+    O arquivo é criado como uma Tabela do Excel. Isso é importante porque,
+    quando o usuário usar o filtro/sort de uma coluna (por exemplo,
+    NOME_CORRIGIDO), o Excel moverá a LINHA INTEIRA, mantendo ID, SESSÃO,
+    NOME_SISTEMA e NOME_CORRIGIDO juntos.
+    """
     try:
-        df = df_mestre_final.copy()
-        if 'ID' in df.columns:
-            df['ID'] = pd.to_numeric(df['ID'], errors='coerce')
-        df.to_excel(caminho_arquivo_mestre, index=False, sheet_name='Produtos')
+        df_para_salvar = df_mestre_final.copy()
+
+        if 'ID' in df_para_salvar.columns:
+            df_para_salvar['ID'] = pd.to_numeric(df_para_salvar['ID'], errors='coerce')
+
+        # IMPORTANTE: não ordenar aqui. A ordem definida pelo usuário no Excel
+        # deve ser preservada na próxima execução.
+        df_para_salvar.to_excel(caminho_arquivo_mestre, index=False, sheet_name='Produtos')
+
         workbook = load_workbook(caminho_arquivo_mestre)
         planilha = workbook['Produtos']
-        planilha.freeze_panes = 'B2'
-        _criar_tabela_excel_mestre(planilha)
+        planilha.freeze_panes = 'A2'
+        planilha.sheet_view.showGridLines = False
+
+        # Cria uma Tabela real do Excel. Os filtros/ordenação passam a operar
+        # sobre a linha inteira, e não sobre uma coluna isoladamente.
+        if planilha.max_row >= 1 and planilha.max_column >= 1:
+            ref_tabela = f"A1:{get_column_letter(planilha.max_column)}{planilha.max_row}"
+            tabela = Table(displayName='ProdutosCadastrados', ref=ref_tabela)
+            estilo_tabela = TableStyleInfo(
+                name='TableStyleMedium2',
+                showFirstColumn=False,
+                showLastColumn=False,
+                showRowStripes=False,
+                showColumnStripes=False
+            )
+            tabela.tableStyleInfo = estilo_tabela
+            planilha.add_table(tabela)
+
         workbook.save(caminho_arquivo_mestre)
     except Exception as e:
         raise Exception(f"Erro ao salvar DataFrame mestre em '{caminho_arquivo_mestre}': {e}")
 
 
-def atualizar_cadastro_mestre_preservando_ordem(
-    caminho_arquivo_mestre: str,
-    df_ofertas_xml: pd.DataFrame,
-    colunas_mestre: List[str]
-) -> Tuple[Set[int], List[Dict[str, Any]], int]:
-    """Atualiza somente produtos novos, preservando integralmente a ordem/dados dos produtos existentes.
-
-    Retorna: IDs com nome divergente, detalhes das divergências e quantidade de novos produtos.
-    """
-    divergencias: List[Dict[str, Any]] = []
-    ids_divergentes: Set[int] = set()
-
-    if os.path.exists(caminho_arquivo_mestre):
-        workbook = load_workbook(caminho_arquivo_mestre)
-        planilha = workbook.active
-
-        cabecalho = [planilha.cell(1, c).value for c in range(1, planilha.max_column + 1)]
-        if not all(col in cabecalho for col in colunas_mestre):
-            faltantes = [col for col in colunas_mestre if col not in cabecalho]
-            workbook.close()
-            raise ValueError(f"Cadastro mestre inválido. Colunas ausentes: {faltantes}")
-
-        idx = {nome: cabecalho.index(nome) + 1 for nome in colunas_mestre}
-        ids_existentes: Dict[int, int] = {}
-        duplicados: List[int] = []
-
-        for linha in range(2, planilha.max_row + 1):
-            valor_id = planilha.cell(linha, idx['ID']).value
-            if valor_id in (None, ""):
-                continue
-            try:
-                id_produto = int(float(valor_id))
-            except (ValueError, TypeError):
-                raise ValueError(f"ID inválido na linha {linha}: {valor_id!r}")
-            if id_produto in ids_existentes:
-                duplicados.append(id_produto)
-            else:
-                ids_existentes[id_produto] = linha
-
-        if duplicados:
-            workbook.close()
-            duplicados_unicos = sorted(set(duplicados))
-            raise ValueError(f"IDs duplicados encontrados no cadastro mestre: {duplicados_unicos[:20]}")
-
-        # Compara o nome atual do XML com NOME_SISTEMA, que é o nome original cadastrado.
-        if not df_ofertas_xml.empty:
-            for _, oferta in df_ofertas_xml.iterrows():
-                try:
-                    id_produto = int(float(oferta['ID_Produto_XML']))
-                except (ValueError, TypeError):
-                    continue
-                if id_produto not in ids_existentes:
-                    continue
-                linha = ids_existentes[id_produto]
-                nome_cadastro = planilha.cell(linha, idx['NOME_SISTEMA']).value
-                nome_xml = oferta.get('Nome_Produto_XML', '')
-                if _normalizar_nome_para_comparacao(nome_cadastro) != _normalizar_nome_para_comparacao(nome_xml):
-                    ids_divergentes.add(id_produto)
-                    divergencias.append({
-                        'ID': id_produto,
-                        'NOME_CADASTRO': '' if nome_cadastro is None else str(nome_cadastro),
-                        'NOME_XML': '' if nome_xml is None else str(nome_xml),
-                    })
-
-        novos_ids = []
-        vistos_novos = set()
-        if not df_ofertas_xml.empty:
-            for _, oferta in df_ofertas_xml.iterrows():
-                try:
-                    id_produto = int(float(oferta['ID_Produto_XML']))
-                except (ValueError, TypeError):
-                    continue
-                if id_produto not in ids_existentes and id_produto not in vistos_novos:
-                    vistos_novos.add(id_produto)
-                    novos_ids.append((id_produto, oferta.get('Nome_Produto_XML', '')))
-
-        alterou = bool(novos_ids)
-        backup = None
-        if alterou:
-            try:
-                backup = _criar_backup_arquivo(caminho_arquivo_mestre)
-                if backup:
-                    print(f"🛡️ Backup do cadastro criado: {backup}")
-            except Exception as e:
-                print(f"⚠️ Não foi possível criar backup do cadastro: {e}")
-
-            primeira_linha_nova = planilha.max_row + 1
-            for id_produto, nome_xml in novos_ids:
-                planilha.cell(primeira_linha_nova, idx['ID']).value = id_produto
-                planilha.cell(primeira_linha_nova, idx['SESSÃO']).value = 'SEÇÃO NÃO ESPECIFICADA'
-                planilha.cell(primeira_linha_nova, idx['NOME_SISTEMA']).value = nome_xml
-                planilha.cell(primeira_linha_nova, idx['NOME_CORRIGIDO']).value = nome_xml
-                primeira_linha_nova += 1
-
-            # Copia o estilo da linha anterior para os novos registros, sem reordenar os antigos.
-            if planilha.max_row > 2:
-                linha_modelo = planilha.max_row - len(novos_ids)
-                for linha_nova in range(linha_modelo + 1, planilha.max_row + 1):
-                    for col in range(1, planilha.max_column + 1):
-                        origem = planilha.cell(linha_modelo, col)
-                        destino = planilha.cell(linha_nova, col)
-                        if origem.has_style:
-                            from copy import copy
-                            destino._style = copy(origem._style)
-                        if origem.number_format:
-                            destino.number_format = origem.number_format
-
-        planilha.freeze_panes = 'B2'
-        _criar_tabela_excel_mestre(planilha)
-        workbook.save(caminho_arquivo_mestre)
-        workbook.close()
-        return ids_divergentes, divergencias, len(novos_ids)
-
-    # Cadastro ainda não existe: cria com todos os produtos do XML.
-    df_novos = preparar_novos_produtos_para_dataframe_mestre(df_ofertas_xml, colunas_mestre)
-    if df_novos.empty:
-        pd.DataFrame(columns=colunas_mestre).to_excel(caminho_arquivo_mestre, index=False, sheet_name='Produtos')
-    else:
-        df_novos = df_novos.drop_duplicates(subset=['ID'], keep='first')
-        df_novos.to_excel(caminho_arquivo_mestre, index=False, sheet_name='Produtos')
-    workbook = load_workbook(caminho_arquivo_mestre)
-    planilha = workbook['Produtos']
-    planilha.freeze_panes = 'B2'
-    _criar_tabela_excel_mestre(planilha)
-    workbook.save(caminho_arquivo_mestre)
-    workbook.close()
-    return set(), [], len(df_novos)
-
-
-def aplicar_estilos_visuais_arquivo_mestre(
-    caminho_arquivo_mestre: str,
-    ids_produtos_em_oferta: Set[int],
-    preenchimento_destaque: PatternFill,
-    ids_cadastro_alterado: Optional[Set[int]] = None
-) -> List[Dict[str, Any]]:
+def aplicar_estilos_visuais_arquivo_mestre(caminho_arquivo_mestre: str, ids_produtos_em_oferta: Set[int], preenchimento_destaque: PatternFill) -> List[Dict[str, Any]]:
     produtos_coloridos_info = []
     try:
         workbook = load_workbook(caminho_arquivo_mestre)
         planilha = workbook.active
         sem_preenchimento = PatternFill(fill_type=None)
-        ids_cadastro_alterado = ids_cadastro_alterado or set()
 
         id_col_idx, nome_corrigido_col_idx, nome_sistema_col_idx = None, None, None
         if planilha.max_row > 0:
-            for i, celula in enumerate(planilha[1]):
+            celulas_cabecalho = planilha[1]
+            for i, celula in enumerate(celulas_cabecalho):
                 if celula.value == 'ID':
                     id_col_idx = i + 1
                 elif celula.value == 'NOME_CORRIGIDO':
@@ -572,41 +414,34 @@ def aplicar_estilos_visuais_arquivo_mestre(
                 elif celula.value == 'NOME_SISTEMA':
                     nome_sistema_col_idx = i + 1
 
-        if id_col_idx is None:
-            workbook.close()
+        if id_col_idx is None and planilha.max_row > 0:
+            print(f"⚠️  Aviso: Coluna 'ID' não encontrada no cabeçalho de '{NOME_ARQUIVO_MESTRE_PRODUTOS}'. Não será possível aplicar cores.")
+            workbook.save(caminho_arquivo_mestre)
             return []
 
         if planilha.max_row > 1:
             for num_linha in range(2, planilha.max_row + 1):
-                # Não apaga estilos da tabela; apenas remove o destaque verde aplicado pelo script.
-                valor_id = planilha.cell(num_linha, id_col_idx).value
-                try:
-                    id_atual = int(float(valor_id)) if valor_id is not None else None
-                except (ValueError, TypeError):
-                    id_atual = None
-                # Destaque verde dos produtos presentes nas ofertas.
-                if id_atual in ids_produtos_em_oferta:
-                    for num_coluna in range(1, planilha.max_column + 1):
-                        planilha.cell(row=num_linha, column=num_coluna).fill = preenchimento_destaque
-                    nome_produto = "NOME NÃO ENCONTRADO"
-                    if nome_corrigido_col_idx and planilha.cell(num_linha, nome_corrigido_col_idx).value:
-                        nome_produto = planilha.cell(num_linha, nome_corrigido_col_idx).value
-                    elif nome_sistema_col_idx and planilha.cell(num_linha, nome_sistema_col_idx).value:
-                        nome_produto = planilha.cell(num_linha, nome_sistema_col_idx).value
-                    produtos_coloridos_info.append({'ID': id_atual, 'Nome': nome_produto})
+                for num_coluna in range(1, planilha.max_column + 1):
+                    planilha.cell(row=num_linha, column=num_coluna).fill = sem_preenchimento
 
-                # Se o XML trouxe um nome diferente do NOME_SISTEMA cadastrado,
-                # o alerta fica NO CADASTRO MESTRE. Não altera NOME_CORRIGIDO.
-                # A célula NOME_SISTEMA é a informação que precisa ser revisada.
-                # Este destaque é aplicado depois do verde para sempre prevalecer.
-                if id_atual in ids_cadastro_alterado and nome_sistema_col_idx:
-                    celula_nome_sistema = planilha.cell(num_linha, nome_sistema_col_idx)
-                    celula_nome_sistema.fill = PREENCHIMENTO_CADASTRO_ALTERADO
-                    celula_nome_sistema.font = FONTE_CADASTRO_ALTERADO
-        planilha.freeze_panes = 'B2'
-        _criar_tabela_excel_mestre(planilha)
+                valor_celula_id = planilha.cell(row=num_linha, column=id_col_idx).value
+                if valor_celula_id is not None:
+                    try:
+                        id_atual = int(float(valor_celula_id))
+                        if id_atual in ids_produtos_em_oferta:
+                            for num_coluna in range(1, planilha.max_column + 1):
+                                planilha.cell(row=num_linha, column=num_coluna).fill = preenchimento_destaque
+
+                            nome_produto = "NOME NÃO ENCONTRADO"
+                            if nome_corrigido_col_idx and planilha.cell(row=num_linha, column=nome_corrigido_col_idx).value:
+                                nome_produto = planilha.cell(row=num_linha, column=nome_corrigido_col_idx).value
+                            elif nome_sistema_col_idx and planilha.cell(row=num_linha, column=nome_sistema_col_idx).value:
+                                nome_produto = planilha.cell(row=num_linha, column=nome_sistema_col_idx).value
+                            produtos_coloridos_info.append({'ID': id_atual, 'Nome': nome_produto})
+                    except (ValueError, TypeError):
+                        pass
+
         workbook.save(caminho_arquivo_mestre)
-        workbook.close()
         return produtos_coloridos_info
     except Exception as e:
         print(f"❌ Erro ao aplicar estilos visuais em '{caminho_arquivo_mestre}': {e}")
@@ -614,48 +449,58 @@ def aplicar_estilos_visuais_arquivo_mestre(
         return []
 
 
-def gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml: pd.DataFrame) -> Set[int]:
+def gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml: pd.DataFrame) -> None:
     print(f"💾 Atualizando o arquivo de cadastro de produtos: './{NOME_ARQUIVO_MESTRE_PRODUTOS}'...")
     caminho_mestre = f'./{NOME_ARQUIVO_MESTRE_PRODUTOS}'
-    colunas_mestre = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
+    colunas_mestre_ordenadas = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
+
+    df_mestre_atual = carregar_ou_inicializar_dataframe_mestre(caminho_mestre, colunas_mestre_ordenadas)
+
+    df_novos_produtos_identificados = identificar_produtos_novos_para_cadastro(df_ofertas_consolidadas_xml, df_mestre_atual)
+
+    if not df_novos_produtos_identificados.empty:
+        print(f"ℹ️ {len(df_novos_produtos_identificados)} novos produtos encontrados para adicionar.")
+        df_novos_formatados = preparar_novos_produtos_para_dataframe_mestre(df_novos_produtos_identificados, colunas_mestre_ordenadas)
+        df_mestre_atual = pd.concat([df_mestre_atual, df_novos_formatados], ignore_index=True)
+        df_mestre_atual.drop_duplicates(subset=['ID'], keep='first', inplace=True)
+    else:
+        if not df_ofertas_consolidadas_xml.empty:
+            print(f"ℹ️ Nenhum produto novo das ofertas XML para adicionar ao '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
+
+    # NÃO ordenar o cadastro mestre automaticamente.
+    # A ordem das linhas é uma preferência do usuário e deve sobreviver às
+    # próximas execuções do script. O relacionamento entre os campos é feito
+    # pelo ID, e não pela posição da linha.
+    df_mestre_para_salvar = df_mestre_atual.reindex(columns=colunas_mestre_ordenadas).copy()
 
     try:
-        ids_divergentes, divergencias, qtd_novos = atualizar_cadastro_mestre_preservando_ordem(
-            caminho_mestre, df_ofertas_consolidadas_xml, colunas_mestre
-        )
+        salvar_dataframe_mestre_formatado(df_mestre_para_salvar, caminho_mestre)
 
-        if qtd_novos:
-            print(f"✅ {qtd_novos} novos produtos adicionados ao final do cadastro. A ordem dos produtos existentes foi preservada.")
-        else:
-            print("ℹ️ Nenhum produto novo para adicionar. Cadastro existente preservado.")
+        ids_produtos_oferta_set = set()
+        if not df_ofertas_consolidadas_xml.empty and 'ID_Produto_XML' in df_ofertas_consolidadas_xml.columns:
+            ids_produtos_oferta_set = set(df_ofertas_consolidadas_xml['ID_Produto_XML'].dropna().astype(int).unique())
 
-        if divergencias:
-            print("\n⚠️ ALTERAÇÕES DE CADASTRO DETECTADAS (XML diferente de NOME_SISTEMA):")
-            for item in sorted({(d['ID'], d['NOME_CADASTRO'], d['NOME_XML']) for d in divergencias}, key=lambda x: x[0]):
-                print(f"  - ID {item[0]} | Cadastro: {item[1]} | XML: {item[2]}")
-            print("🔴 Essas divergências serão marcadas em vermelho no NOME_SISTEMA do cadastro mestre.")
-        else:
-            print("✅ Nenhuma alteração de nome de produto detectada entre XML e cadastro.")
+        if not df_mestre_para_salvar.empty or os.path.exists(caminho_mestre):
+            produtos_destacados_info = aplicar_estilos_visuais_arquivo_mestre(caminho_mestre, ids_produtos_oferta_set, PREENCHIMENTO_DESTAQUE)
 
-        ids_produtos_oferta_set = _obter_ids_validos(df_ofertas_consolidadas_xml, 'ID_Produto_XML')
-        if os.path.exists(caminho_mestre):
-            produtos_destacados_info = aplicar_estilos_visuais_arquivo_mestre(
-                caminho_mestre,
-                ids_produtos_oferta_set,
-                PREENCHIMENTO_DESTAQUE,
-                ids_divergentes
-            )
+            if not df_novos_produtos_identificados.empty:
+                print(f"✅ '{NOME_ARQUIVO_MESTRE_PRODUTOS}' atualizado com {len(df_novos_produtos_identificados)} novos produtos e formatação de cores aplicada.")
+            else:
+                print(f"✅ '{NOME_ARQUIVO_MESTRE_PRODUTOS}' salvo com formatação de cores aplicada.")
+
             if produtos_destacados_info:
-                print(f"🟢 {len(produtos_destacados_info)} registros do XML destacados no cadastro mestre.")
-        return ids_divergentes
-    except PermissionError:
-        print(f"❌ Não foi possível alterar '{NOME_ARQUIVO_MESTRE_PRODUTOS}'. Feche o arquivo no Excel e tente novamente.")
-        raise
+                print(f"ℹ️ Produtos das ofertas XML (coloridos em verde em '{NOME_ARQUIVO_MESTRE_PRODUTOS}'):")
+                unique_produtos_coloridos = [dict(t) for t in {tuple(d.items()) for d in produtos_destacados_info}]
+                for prod_info in sorted(unique_produtos_coloridos, key=lambda x: x['ID']):
+                    print(f"  - ID: {prod_info['ID']}, Nome: {str(prod_info['Nome'])}")
+            elif ids_produtos_oferta_set:
+                print(f"ℹ️ Havia {len(ids_produtos_oferta_set)} produtos nas ofertas XML, mas nenhum correspondente foi encontrado ou pode ser colorido em '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
+            else:
+                print(f"ℹ️ Nenhum produto das ofertas XML para colorir em '{NOME_ARQUIVO_MESTRE_PRODUTOS}'.")
+
     except Exception as e:
         print(f"❌ Erro crítico durante o gerenciamento do arquivo mestre: {e}")
         traceback.print_exc()
-        raise
-
 
 # ------------------------------------------
 # MÓDULO DE GERAÇÃO DO RELATÓRIO FINAL DE OFERTAS
@@ -746,7 +591,7 @@ def _formatar_ofertas_para_relatorio(df_ofertas: pd.DataFrame, nome_produto_col:
     })
 
 
-def agregar_e_transformar_ofertas_para_relatorio(df_enriquecido: pd.DataFrame, ids_cadastro_alterado: Set[int]) -> pd.DataFrame:
+def agregar_e_transformar_ofertas_para_relatorio(df_enriquecido: pd.DataFrame) -> pd.DataFrame:
     if df_enriquecido.empty:
         return pd.DataFrame(columns=['NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO', 'DESTAQUE'])
 
@@ -775,7 +620,7 @@ def agregar_e_transformar_ofertas_para_relatorio(df_enriquecido: pd.DataFrame, i
                 TIPO_AGREGADO=pd.NamedAgg(column='Tipo_Produto_Variante', aggfunc=agregar_tipos_validos),
                 NOME_PROMOÇÃO_ORIGINAL=pd.NamedAgg(column='NOME_PROMOÇÃO_ORIGINAL', aggfunc='first'),
                 ID=pd.NamedAgg(column='ID', aggfunc='first'),
-                SESSÃO=pd.NamedAgg(column='SESSÃO', aggfunc='first'),
+                SESSÃO=pd.NamedAgg(column='SESSÃO', aggfunc='first')
             ).rename(columns={'Produto_Base_Agrupamento': 'PRODUTO', 'TIPO_AGREGADO': 'TIPO'})
 
             df_agregado_com_tipos['DESTAQUE'] = False
@@ -1082,10 +927,6 @@ def escrever_e_estilizar_planilha_relatorio_final(df_dados_para_planilha: pd.Dat
             _estilizar_cabecalho_planilha(planilha_ativa_ws, colunas_finais_para_excel, config_formatacao, estilo_borda_completa)
             _estilizar_linhas_de_dados_planilha(planilha_ativa_ws, df_com_info_destaque_completa, colunas_finais_para_excel, config_formatacao, estilo_borda_completa, preenchimento_destaque_excel, fonte_destaque_excel)
             _ajustar_largura_das_colunas_planilha(planilha_ativa_ws, colunas_finais_para_excel, config_formatacao)
-            # O relatório é feito para impressão: sem filtros, sem Excel Table,
-            # sem listras automáticas e sem congelamento de painéis.
-            planilha_ativa_ws.auto_filter.ref = None
-            planilha_ativa_ws.freeze_panes = None
 
         num_ofertas_reais_no_relatorio = 0
         if 'PRODUTO' in df_dados_para_planilha.columns:
@@ -1098,7 +939,7 @@ def escrever_e_estilizar_planilha_relatorio_final(df_dados_para_planilha: pd.Dat
         traceback.print_exc()
 
 
-def gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml: pd.DataFrame, modo_operacao: str, ids_cadastro_alterado: Set[int]) -> None:
+def gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml: pd.DataFrame, modo_operacao: str) -> None:
     print(f"📊 Gerando o relatório final de ofertas: './{NOME_RELATORIO_FINAL_OFERTAS}'...")
     caminho_mestre_prod = f'./{NOME_ARQUIVO_MESTRE_PRODUTOS}'
     caminho_relatorio = f'./{NOME_RELATORIO_FINAL_OFERTAS}'
@@ -1118,15 +959,13 @@ def gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml: pd.DataFram
 
     df_fundido_ofertas_mestre = fundir_dados_ofertas_com_mestre(df_ofertas_xml_preparado, df_mestre_para_relatorio)
     df_enriquecido_com_detalhes = enriquecer_dados_fundidos_com_detalhes_produto(df_fundido_ofertas_mestre)
-    df_relatorio_processado_agregado = agregar_e_transformar_ofertas_para_relatorio(df_enriquecido_com_detalhes, ids_cadastro_alterado)
+    df_relatorio_processado_agregado = agregar_e_transformar_ofertas_para_relatorio(df_enriquecido_com_detalhes)
 
     for col_excel in colunas_excel_finais_ordenadas:
         if col_excel not in df_relatorio_processado_agregado.columns:
             df_relatorio_processado_agregado[col_excel] = np.nan if col_excel in ['ID', 'PROMOÇÃO'] else ""
     if 'DESTAQUE' not in df_relatorio_processado_agregado.columns:
         df_relatorio_processado_agregado['DESTAQUE'] = False
-    if 'CADASTRO_ALTERADO' not in df_relatorio_processado_agregado.columns:
-        df_relatorio_processado_agregado['CADASTRO_ALTERADO'] = False
     df_relatorio_processado_agregado['DESTAQUE'] = df_relatorio_processado_agregado['DESTAQUE'].fillna(False).astype(bool)
 
     df_antigo_relatorio_comp, chaves_antigas_comp, mapa_precos_antigos_comp = None, set(), {}
@@ -1195,7 +1034,7 @@ def executar_processamento_principal(modo_operacao: str) -> None:
     if df_ofertas_consolidadas_xml_geral.empty and not arquivos_xml_efetivos_para_processar:
         print("ℹ️ Nenhum dado de produto foi consolidado dos arquivos XML nesta execução.")
 
-    ids_cadastro_alterado = gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml_geral)
+    gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml_geral)
 
     necessario_gerar_relatorio = True
     caminho_relatorio_final_para_verificacao = f'./{NOME_RELATORIO_FINAL_OFERTAS}'
@@ -1208,7 +1047,7 @@ def executar_processamento_principal(modo_operacao: str) -> None:
             necessario_gerar_relatorio = False
 
     if necessario_gerar_relatorio:
-        gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml_geral, modo_operacao, ids_cadastro_alterado)
+        gerar_relatorio_consolidado_ofertas(df_ofertas_consolidadas_xml_geral, modo_operacao)
 
     print("🏁 Processamento concluído.")
 
