@@ -31,7 +31,7 @@ FONTE_CADASTRO_ALTERADO = Font(color="9C0006", bold=True)
 # Coluna principal para ordenação.
 # Opções válidas (nomes das colunas no DataFrame final antes de ir para o Excel):
 # 'NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO'
-COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'NOME_PROMOÇÃO'
+COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'SESSÃO'
 # Define a ordem da coluna primária: True para ascendente, False para descendente.
 ORDEM_ASCENDENTE_PRIMARIA_RELATORIO = True
 # -----------------------------------------------------------
@@ -577,8 +577,40 @@ def aplicar_estilos_visuais_arquivo_mestre(
             return []
 
         if planilha.max_row > 1:
+            # Antes de aplicar as cores desta execução, remove SOMENTE os
+            # destaques gerados pelo script em execuções anteriores.
+            # Assim, cores manuais do usuário permanecem intactas e as
+            # marcações nunca ficam acumuladas entre execuções.
+            cores_destaque_script = {
+                '45A045', 'FF45A045',
+                'FFC7CE', 'FFFFC7CE'
+            }
             for num_linha in range(2, planilha.max_row + 1):
-                # Não apaga estilos da tabela; apenas remove o destaque verde aplicado pelo script.
+                for num_coluna in range(1, planilha.max_column + 1):
+                    celula = planilha.cell(row=num_linha, column=num_coluna)
+                    cor = None
+                    try:
+                        # Limpa fundo e fonte dos destaques criados pelo script em execuções anteriores.
+                        if celula.fill and celula.fill.fill_type == 'solid':
+                            cor = celula.fill.fgColor.rgb
+                            if isinstance(cor, str):
+                                cor = cor.upper()
+                                if cor in cores_destaque_script or cor[-6:] in cores_destaque_script:
+                                    celula.fill = sem_preenchimento
+                                    # Restaura a fonte padrão do cadastro.
+                                    celula.font = Font(name='Calibri', size=11, color='000000', bold=False, italic=False)
+                        # Algumas versões anteriores deixaram somente a fonte colorida/negritada.
+                        cor_fonte = None
+                        if celula.font and celula.font.color:
+                            if celula.font.color.type == 'rgb':
+                                cor_fonte = celula.font.color.rgb
+                        if isinstance(cor_fonte, str):
+                            cor_fonte = cor_fonte.upper()
+                            if cor_fonte[-6:] in {'FFFFFF', '9C0006'} and celula.font.bold:
+                                celula.font = Font(name='Calibri', size=11, color='000000', bold=False, italic=False)
+                    except Exception:
+                        pass
+
                 valor_id = planilha.cell(num_linha, id_col_idx).value
                 try:
                     id_atual = int(float(valor_id)) if valor_id is not None else None
