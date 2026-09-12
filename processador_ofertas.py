@@ -31,7 +31,7 @@ FONTE_CADASTRO_ALTERADO = Font(color="9C0006", bold=True)
 # Coluna principal para ordenação.
 # Opções válidas (nomes das colunas no DataFrame final antes de ir para o Excel):
 # 'NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO'
-COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'SESSÃO'
+COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'NOME_PROMOÇÃO'
 # Define a ordem da coluna primária: True para ascendente, False para descendente.
 ORDEM_ASCENDENTE_PRIMARIA_RELATORIO = True
 # -----------------------------------------------------------
