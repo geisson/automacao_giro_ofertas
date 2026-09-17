@@ -31,7 +31,7 @@ FONTE_CADASTRO_ALTERADO = Font(color="9C0006", bold=True)
 # Coluna principal para ordenação.
 # Opções válidas (nomes das colunas no DataFrame final antes de ir para o Excel):
 # 'NOME_PROMOÇÃO', 'SESSÃO', 'ID', 'PRODUTO', 'TIPO', 'PROMOÇÃO'
-COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'NOME_PROMOÇÃO'
+COLUNA_ORDENACAO_PRIMARIA_RELATORIO = 'SESSÃO'
 # Define a ordem da coluna primária: True para ascendente, False para descendente.
 ORDEM_ASCENDENTE_PRIMARIA_RELATORIO = True
 # -----------------------------------------------------------
@@ -437,10 +437,16 @@ def atualizar_cadastro_mestre_preservando_ordem(
         planilha = workbook.active
 
         cabecalho = [planilha.cell(1, c).value for c in range(1, planilha.max_column + 1)]
-        if not all(col in cabecalho for col in colunas_mestre):
-            faltantes = [col for col in colunas_mestre if col not in cabecalho]
+        colunas_obrigatorias_antigas = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
+        if not all(col in cabecalho for col in colunas_obrigatorias_antigas):
+            faltantes = [col for col in colunas_obrigatorias_antigas if col not in cabecalho]
             workbook.close()
             raise ValueError(f"Cadastro mestre inválido. Colunas ausentes: {faltantes}")
+
+        # Compatibilidade: acrescenta a nova coluna ao cadastro existente sem alterar a ordem das colunas antigas.
+        if 'NOME_ATUAL_XML' not in cabecalho:
+            planilha.cell(1, planilha.max_column + 1).value = 'NOME_ATUAL_XML'
+            cabecalho.append('NOME_ATUAL_XML')
 
         idx = {nome: cabecalho.index(nome) + 1 for nome in colunas_mestre}
         ids_existentes: Dict[int, int] = {}
@@ -464,6 +470,11 @@ def atualizar_cadastro_mestre_preservando_ordem(
             duplicados_unicos = sorted(set(duplicados))
             raise ValueError(f"IDs duplicados encontrados no cadastro mestre: {duplicados_unicos[:20]}")
 
+        # A coluna NOME_ATUAL_XML representa SOMENTE a divergência encontrada na execução atual.
+        # Portanto, ela é zerada a cada execução antes de comparar os XMLs.
+        for linha in range(2, planilha.max_row + 1):
+            planilha.cell(linha, idx['NOME_ATUAL_XML']).value = ''
+
         # Compara o nome atual do XML com NOME_SISTEMA, que é o nome original cadastrado.
         if not df_ofertas_xml.empty:
             for _, oferta in df_ofertas_xml.iterrows():
@@ -478,10 +489,14 @@ def atualizar_cadastro_mestre_preservando_ordem(
                 nome_xml = oferta.get('Nome_Produto_XML', '')
                 if _normalizar_nome_para_comparacao(nome_cadastro) != _normalizar_nome_para_comparacao(nome_xml):
                     ids_divergentes.add(id_produto)
+                    nome_xml_texto = '' if nome_xml is None else str(nome_xml)
+                    # Mostra no cadastro mestre o nome atual recebido do XML, somente para os IDs divergentes.
+                    if not planilha.cell(linha, idx['NOME_ATUAL_XML']).value:
+                        planilha.cell(linha, idx['NOME_ATUAL_XML']).value = nome_xml_texto
                     divergencias.append({
                         'ID': id_produto,
                         'NOME_CADASTRO': '' if nome_cadastro is None else str(nome_cadastro),
-                        'NOME_XML': '' if nome_xml is None else str(nome_xml),
+                        'NOME_XML': nome_xml_texto,
                     })
 
         novos_ids = []
@@ -512,6 +527,7 @@ def atualizar_cadastro_mestre_preservando_ordem(
                 planilha.cell(primeira_linha_nova, idx['SESSÃO']).value = 'SEÇÃO NÃO ESPECIFICADA'
                 planilha.cell(primeira_linha_nova, idx['NOME_SISTEMA']).value = nome_xml
                 planilha.cell(primeira_linha_nova, idx['NOME_CORRIGIDO']).value = nome_xml
+                planilha.cell(primeira_linha_nova, idx['NOME_ATUAL_XML']).value = ''
                 primeira_linha_nova += 1
 
             # Copia o estilo da linha anterior para os novos registros, sem reordenar os antigos.
@@ -649,7 +665,7 @@ def aplicar_estilos_visuais_arquivo_mestre(
 def gerenciar_atualizacao_arquivo_mestre_produtos(df_ofertas_consolidadas_xml: pd.DataFrame) -> Set[int]:
     print(f"💾 Atualizando o arquivo de cadastro de produtos: './{NOME_ARQUIVO_MESTRE_PRODUTOS}'...")
     caminho_mestre = f'./{NOME_ARQUIVO_MESTRE_PRODUTOS}'
-    colunas_mestre = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO']
+    colunas_mestre = ['ID', 'SESSÃO', 'NOME_SISTEMA', 'NOME_CORRIGIDO', 'NOME_ATUAL_XML']
 
     try:
         ids_divergentes, divergencias, qtd_novos = atualizar_cadastro_mestre_preservando_ordem(
